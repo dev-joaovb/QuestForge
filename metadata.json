@@ -1,0 +1,6 @@
+{
+  "name": "QuestForge",
+  "description": "Plataforma de engenharia de estudos e preparação para provas, concursos e vestibulares com processamento de PDFs, OCR, IA local e análise de desempenho.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

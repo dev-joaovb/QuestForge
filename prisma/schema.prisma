@@ -1,0 +1,46 @@
+// ============================================================================
+// QUESTFORGE — PRISMA SCHEMA (SPRINT 1: AUTENTICAÇÃO E SESSÕES PERSISTENTES)
+// ============================================================================
+// Modelos ativos: User e UserSession.
+// A recuperação de senha por token depende de provedor externo de envio de e-mail
+// (SMTP/API transacional) e permanece documentada como dependência de infraestrutura.
+// Os demais modelos (Exam, Question, Simulation, Streak, etc.) serão adicionados
+// incrementalmente nas próximas Sprints.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(uuid())
+  name         String
+  email        String        @unique
+  passwordHash String
+  avatarUrl    String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  sessions     UserSession[]
+
+  @@map("users")
+}
+
+model UserSession {
+  id         String   @id @default(uuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
