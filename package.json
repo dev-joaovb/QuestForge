@@ -14,7 +14,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:validate": "prisma validate",
     "test": "vitest run",
-    "test:unit": "vitest run backend/tests/env.test.ts backend/tests/health.unit.test.ts backend/tests/docker-config.unit.test.ts backend/tests/auth.service.test.ts backend/tests/auth.routes.test.ts src/tests/LandingPage.test.tsx src/tests/Login.test.tsx src/tests/Register.test.tsx",
+    "test:unit": "vitest run backend/tests/env.test.ts backend/tests/health.unit.test.ts backend/tests/docker-config.unit.test.ts backend/tests/auth.service.test.ts backend/tests/auth.routes.test.ts backend/tests/question.service.test.ts src/tests/LandingPage.test.tsx src/tests/Login.test.tsx src/tests/Register.test.tsx",
     "test:integration": "vitest run backend/tests/database.integration.test.ts backend/tests/auth.integration.test.ts",
     "test:watch": "vitest"
   },

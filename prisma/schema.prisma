@@ -1,11 +1,8 @@
 // ============================================================================
-// QUESTFORGE — PRISMA SCHEMA (SPRINT 1: AUTENTICAÇÃO E SESSÕES PERSISTENTES)
+// QUESTFORGE — PRISMA SCHEMA (SPRINT 2: BANCO DE QUESTÕES E PROVAS DE ORIGEM)
 // ============================================================================
-// Modelos ativos: User e UserSession.
-// A recuperação de senha por token depende de provedor externo de envio de e-mail
-// (SMTP/API transacional) e permanece documentada como dependência de infraestrutura.
-// Os demais modelos (Exam, Question, Simulation, Streak, etc.) serão adicionados
-// incrementalmente nas próximas Sprints.
+// Modelos ativos: User, UserSession, Exam, Question e Alternative.
+// Os modelos de processamento PDF/OCR, IA e Simulados pertencem às Sprints 3 a 6.
 // ============================================================================
 
 generator client {
@@ -17,6 +14,24 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+}
+
+enum QuestionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum QuestionStatus {
+  DRAFT
+  ACTIVE
+  NEEDS_REVIEW
+  ARCHIVED
+}
+
 model User {
   id           String        @id @default(uuid())
   name         String
@@ -26,6 +41,8 @@ model User {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   sessions     UserSession[]
+  exams        Exam[]
+  questions    Question[]
 
   @@map("users")
 }
@@ -43,4 +60,73 @@ model UserSession {
   @@index([userId])
   @@index([expiresAt])
   @@map("user_sessions")
+}
+
+model Exam {
+  id          String     @id @default(uuid())
+  userId      String
+  title       String
+  institution String?
+  board       String?
+  year        Int?
+  position    String?
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions Question[]
+
+  @@index([userId])
+  @@index([board])
+  @@index([year])
+  @@map("exams")
+}
+
+model Question {
+  id             String              @id @default(uuid())
+  userId         String
+  examId         String?
+  originalNumber Int?
+  statement      String
+  type           QuestionType        @default(MULTIPLE_CHOICE)
+  subject        String
+  topic          String?
+  subtopic       String?
+  board          String?
+  examTitle      String?
+  year           Int?
+  difficulty     QuestionDifficulty?
+  correctAnswer  String?
+  explanation    String?
+  sourcePage     Int?
+  status         QuestionStatus      @default(ACTIVE)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam         Exam?         @relation(fields: [examId], references: [id], onDelete: SetNull)
+  alternatives Alternative[]
+
+  @@index([userId, createdAt])
+  @@index([userId, subject])
+  @@index([userId, topic])
+  @@index([userId, board])
+  @@index([examId])
+  @@map("questions")
+}
+
+model Alternative {
+  id         String   @id @default(uuid())
+  questionId String
+  letter     String
+  text       String
+  position   Int
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, letter])
+  @@unique([questionId, position])
+  @@index([questionId])
+  @@map("alternatives")
 }

@@ -66,8 +66,14 @@ export function Navbar() {
           {status === 'authenticated' && user ? (
             <>
               <Link
+                to="/questions"
+                className="whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
+              >
+                Banco de Questões
+              </Link>
+              <Link
                 to="/profile"
-                className="whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
+                className="whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
               >
                 Minha conta ({user.name.split(' ')[0]})
               </Link>
@@ -135,6 +141,13 @@ export function Navbar() {
           <div className="mt-4 flex flex-col gap-2 border-t border-neutral-800 pt-4">
             {status === 'authenticated' && user ? (
               <>
+                <Link
+                  to="/questions"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full rounded-md border border-neutral-800 px-4 py-2.5 text-center text-sm font-medium text-neutral-200 hover:bg-neutral-900 focus-visible:outline-2 focus-visible:outline-[#2563EB]"
+                >
+                  Banco de Questões
+                </Link>
                 <Link
                   to="/profile"
                   onClick={() => setMobileMenuOpen(false)}

@@ -142,11 +142,28 @@ export function ProfilePage() {
               </div>
             </div>
 
-            <div className="mt-6 flex items-center gap-2 border-t border-neutral-800 pt-5 text-xs text-neutral-400">
-              <UserCheck className="h-4 w-4 text-[#2563EB]" />
-              <span>
-                Sessão mantida via cookie <code>HttpOnly</code> sem uso de <code>localStorage</code>.
-              </span>
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-neutral-800 pt-5 text-xs text-neutral-400">
+              <div className="flex items-center gap-2">
+                <UserCheck className="h-4 w-4 text-[#2563EB]" />
+                <span>
+                  Sessão mantida via cookie <code>HttpOnly</code> sem uso de <code>localStorage</code>.
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Link
+                  to="/questions"
+                  className="rounded-md border border-neutral-800 bg-[#0A0A0A] px-3.5 py-2 text-xs font-medium text-neutral-200 transition-colors hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-[#2563EB]"
+                >
+                  Acessar Banco de Questões
+                </Link>
+                <Link
+                  to="/questions/new"
+                  className="rounded-md bg-[#2563EB] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1D4ED8] focus-visible:outline-2 focus-visible:outline-[#2563EB]"
+                >
+                  Nova Questão
+                </Link>
+              </div>
             </div>
           </div>
         )}

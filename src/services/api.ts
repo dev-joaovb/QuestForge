@@ -1,7 +1,12 @@
 import type {
   AuthSessionResponse,
+  CreateOrUpdateQuestionPayload,
   HealthApiResponse,
+  ListQuestionsParams,
   LoginRequestPayload,
+  PaginatedQuestionsResponse,
+  QuestionOwnerDetailDTO,
+  QuestionResponseDTO,
   RegisterRequestPayload,
 } from '../types/index.ts';
 
@@ -253,4 +258,215 @@ export async function logoutUser(): Promise<void> {
     throw await extractApiError(response, 'Não foi possível encerrar a sessão no servidor.');
   }
 }
+
+function isValidQuestionDTO(payload: unknown): payload is QuestionResponseDTO {
+  if (!payload || typeof payload !== 'object') return false;
+  const q = payload as Record<string, unknown>;
+  return (
+    typeof q.id === 'string' &&
+    typeof q.statement === 'string' &&
+    typeof q.subject === 'string' &&
+    typeof q.answerKeyRevealed === 'boolean' &&
+    Array.isArray(q.alternatives)
+  );
+}
+
+function isValidPaginatedQuestionsResponse(
+  payload: unknown
+): payload is PaginatedQuestionsResponse {
+  if (!payload || typeof payload !== 'object') return false;
+  const candidate = payload as Record<string, unknown>;
+  if (!Array.isArray(candidate.items)) return false;
+  if (typeof candidate.total !== 'number') return false;
+  if (typeof candidate.currentPage !== 'number') return false;
+  if (typeof candidate.totalPages !== 'number') return false;
+  return candidate.items.every((item) => isValidQuestionDTO(item));
+}
+
+/**
+ * Consulta GET /api/questions com filtros e paginação reais.
+ */
+export async function fetchQuestions(
+  params: ListQuestionsParams = {},
+  signal?: AbortSignal
+): Promise<PaginatedQuestionsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.page !== undefined) searchParams.set('page', String(params.page));
+  if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+  if (params.search && params.search.trim()) searchParams.set('search', params.search.trim());
+  if (params.subject && params.subject.trim()) searchParams.set('subject', params.subject.trim());
+  if (params.topic && params.topic.trim()) searchParams.set('topic', params.topic.trim());
+  if (params.board && params.board.trim()) searchParams.set('board', params.board.trim());
+  if (params.examTitle && params.examTitle.trim()) {
+    searchParams.set('examTitle', params.examTitle.trim());
+  }
+  if (params.type) searchParams.set('type', params.type);
+  if (params.difficulty) searchParams.set('difficulty', params.difficulty);
+  if (params.includeAnswer !== undefined) {
+    searchParams.set('includeAnswer', params.includeAnswer ? 'true' : 'false');
+  }
+
+  const queryString = searchParams.toString();
+  const url = queryString ? `/api/questions?${queryString}` : '/api/questions';
+
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível carregar o banco de questões.'
+    );
+  }
+
+  const parsed = await parseJsonOrThrow(response);
+  if (!isValidPaginatedQuestionsResponse(parsed)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_QUESTIONS_PAYLOAD',
+      'Formato inválido retornado por /api/questions.'
+    );
+  }
+
+  return parsed;
+}
+
+/**
+ * Consulta GET /api/questions/:id (com proteção de gabarito por padrão).
+ */
+export async function fetchQuestionById(
+  id: string,
+  options?: { includeAnswer?: boolean; signal?: AbortSignal }
+): Promise<QuestionResponseDTO> {
+  const encodedId = encodeURIComponent(id);
+  const query = options?.includeAnswer ? '?includeAnswer=true' : '';
+  const response = await fetch(`/api/questions/${encodedId}${query}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível carregar os detalhes da questão.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidQuestionDTO(parsed.question)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_QUESTION_DETAIL_PAYLOAD',
+      'Formato inválido retornado ao consultar a questão.'
+    );
+  }
+
+  return parsed.question;
+}
+
+/**
+ * Envia POST /api/questions com cabeçalho CSRF X-Requested-With: QuestForge-Client.
+ */
+export async function createQuestion(
+  payload: CreateOrUpdateQuestionPayload
+): Promise<QuestionOwnerDetailDTO> {
+  const response = await fetch('/api/questions', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(response, 'Não foi possível cadastrar a questão.');
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidQuestionDTO(parsed.question)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_QUESTION_CREATE_PAYLOAD',
+      'Resposta inesperada do servidor ao cadastrar questão.'
+    );
+  }
+
+  return parsed.question as QuestionOwnerDetailDTO;
+}
+
+/**
+ * Envia PUT /api/questions/:id com cabeçalho CSRF X-Requested-With: QuestForge-Client.
+ */
+export async function updateQuestion(
+  id: string,
+  payload: Partial<CreateOrUpdateQuestionPayload>
+): Promise<QuestionOwnerDetailDTO> {
+  const encodedId = encodeURIComponent(id);
+  const response = await fetch(`/api/questions/${encodedId}`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(response, 'Não foi possível atualizar a questão.');
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidQuestionDTO(parsed.question)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_QUESTION_UPDATE_PAYLOAD',
+      'Resposta inesperada do servidor ao atualizar questão.'
+    );
+  }
+
+  return parsed.question as QuestionOwnerDetailDTO;
+}
+
+/**
+ * Envia DELETE /api/questions/:id com cabeçalho CSRF X-Requested-With: QuestForge-Client.
+ */
+export async function deleteQuestion(id: string): Promise<{ message: string }> {
+  const encodedId = encodeURIComponent(id);
+  const response = await fetch(`/api/questions/${encodedId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(response, 'Não foi possível excluir a questão.');
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  return {
+    message:
+      typeof parsed?.message === 'string'
+        ? parsed.message
+        : 'Questão excluída com sucesso.',
+  };
+}
+
 

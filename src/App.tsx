@@ -10,6 +10,9 @@ import { LoginPage } from './pages/LoginPage.tsx';
 import { RegisterPage } from './pages/RegisterPage.tsx';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage.tsx';
 import { ProfilePage } from './pages/ProfilePage.tsx';
+import { QuestionsListPage } from './pages/QuestionsListPage.tsx';
+import { QuestionFormPage } from './pages/QuestionFormPage.tsx';
+import { QuestionDetailPage } from './pages/QuestionDetailPage.tsx';
 
 export function AppRoutes() {
   return (
@@ -20,6 +23,10 @@ export function AppRoutes() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/questions" element={<QuestionsListPage />} />
+        <Route path="/questions/new" element={<QuestionFormPage mode="create" />} />
+        <Route path="/questions/:id" element={<QuestionDetailPage />} />
+        <Route path="/questions/:id/edit" element={<QuestionFormPage mode="edit" />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthProvider>
@@ -33,4 +40,5 @@ export default function App() {
     </BrowserRouter>
   );
 }
+
 
