@@ -19,6 +19,18 @@ const envSchema = z.object({
     .min(32, 'SESSION_SECRET é obrigatória e deve possuir pelo menos 32 caracteres.'),
   OLLAMA_BASE_URL: z.string().url().default('http://localhost:11434'),
   OLLAMA_MODEL: z.string().min(1).optional(),
+  OLLAMA_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(300000) // limite superior de 5 minutos
+    .default(45000), // 45 segundos
+  AI_MAX_QUESTIONS_PER_DOCUMENT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(500)
+    .default(100),
   MINIO_ENDPOINT: z.string().min(1).default('localhost'),
   MINIO_PORT: z.coerce.number().int().positive().default(9000),
   MINIO_ACCESS_KEY: z.string().min(1).optional(),
@@ -28,6 +40,14 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((val) => val === 'true'),
+  PDF_MAX_FILE_SIZE_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(104857600) // limite superior absoluto de 100 MB
+    .default(20971520), // 20 MB
+  PDF_MAX_PAGES: z.coerce.number().int().positive().max(1000).default(150),
+  PDF_EXTRACTION_TIMEOUT_MS: z.coerce.number().int().positive().max(120000).default(15000),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

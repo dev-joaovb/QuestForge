@@ -2,9 +2,12 @@ import type {
   AuthSessionResponse,
   CreateOrUpdateQuestionPayload,
   HealthApiResponse,
+  ListPdfDocumentsParams,
   ListQuestionsParams,
   LoginRequestPayload,
+  PaginatedPdfDocumentsResponse,
   PaginatedQuestionsResponse,
+  PdfDocumentDTO,
   QuestionOwnerDetailDTO,
   QuestionResponseDTO,
   RegisterRequestPayload,
@@ -469,4 +472,178 @@ export async function deleteQuestion(id: string): Promise<{ message: string }> {
   };
 }
 
+function isValidPdfDocumentDTO(payload: unknown): payload is PdfDocumentDTO {
+  if (!payload || typeof payload !== 'object') return false;
+  const doc = payload as Record<string, unknown>;
+  return (
+    typeof doc.id === 'string' &&
+    typeof doc.userId === 'string' &&
+    typeof doc.originalName === 'string' &&
+    typeof doc.mimeType === 'string' &&
+    typeof doc.sizeBytes === 'number' &&
+    typeof doc.checksumSha256 === 'string' &&
+    typeof doc.status === 'string' &&
+    typeof doc.requiresOcr === 'boolean' &&
+    typeof doc.createdAt === 'string'
+  );
+}
 
+function isValidPaginatedPdfDocumentsResponse(
+  payload: unknown
+): payload is PaginatedPdfDocumentsResponse {
+  if (!payload || typeof payload !== 'object') return false;
+  const candidate = payload as Record<string, unknown>;
+  if (!Array.isArray(candidate.items)) return false;
+  if (typeof candidate.total !== 'number') return false;
+  if (typeof candidate.currentPage !== 'number') return false;
+  if (typeof candidate.totalPages !== 'number') return false;
+  return candidate.items.every((item) => isValidPdfDocumentDTO(item));
+}
+
+/**
+ * Consulta GET /api/documents com paginação e filtro opcional de status.
+ */
+export async function fetchPdfDocuments(
+  params: ListPdfDocumentsParams = {},
+  signal?: AbortSignal
+): Promise<PaginatedPdfDocumentsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.page !== undefined) searchParams.set('page', String(params.page));
+  if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+  if (params.status) searchParams.set('status', params.status);
+
+  const queryString = searchParams.toString();
+  const url = queryString ? `/api/documents?${queryString}` : '/api/documents';
+
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível carregar a lista de documentos PDF.'
+    );
+  }
+
+  const parsed = await parseJsonOrThrow(response);
+  if (!isValidPaginatedPdfDocumentsResponse(parsed)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_DOCUMENTS_PAYLOAD',
+      'Formato inválido retornado por /api/documents.'
+    );
+  }
+
+  return parsed;
+}
+
+/**
+ * Consulta GET /api/documents/:id para inspecionar os metadados do documento PDF.
+ */
+export async function fetchPdfDocumentById(
+  id: string,
+  signal?: AbortSignal
+): Promise<PdfDocumentDTO> {
+  const encodedId = encodeURIComponent(id);
+  const response = await fetch(`/api/documents/${encodedId}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível carregar os metadados do documento PDF.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidPdfDocumentDTO(parsed.document)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_DOCUMENT_DETAIL_PAYLOAD',
+      'Formato inválido retornado ao consultar o documento PDF.'
+    );
+  }
+
+  return parsed.document;
+}
+
+/**
+ * Envia POST /api/documents usando multipart/form-data com cabeçalho CSRF X-Requested-With: QuestForge-Client.
+ */
+export async function uploadPdfDocument(
+  file: File,
+  options?: { examId?: string | null }
+): Promise<PdfDocumentDTO> {
+  const formData = new FormData();
+  formData.append('file', file, file.name);
+  if (options?.examId && options.examId.trim()) {
+    formData.append('examId', options.examId.trim());
+  }
+
+  const response = await fetch('/api/documents', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível enviar ou processar o documento PDF.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidPdfDocumentDTO(parsed.document)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_DOCUMENT_UPLOAD_PAYLOAD',
+      'Resposta inesperada do servidor ao processar o documento PDF.'
+    );
+  }
+
+  return parsed.document;
+}
+
+/**
+ * Envia DELETE /api/documents/:id com cabeçalho CSRF X-Requested-With: QuestForge-Client.
+ */
+export async function deletePdfDocument(id: string): Promise<{ message: string }> {
+  const encodedId = encodeURIComponent(id);
+  const response = await fetch(`/api/documents/${encodedId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(response, 'Não foi possível excluir o documento PDF.');
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  return {
+    message:
+      typeof parsed?.message === 'string'
+        ? parsed.message
+        : 'Documento PDF excluído com sucesso.',
+  };
+}

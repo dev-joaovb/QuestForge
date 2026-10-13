@@ -149,4 +149,41 @@ export interface CreateOrUpdateQuestionPayload {
   alternatives?: QuestionAlternativeInput[];
 }
 
+export type DocumentProcessingStatus =
+  | 'UPLOADED'
+  | 'PROCESSING'
+  | 'COMPLETED'
+  | 'NEEDS_OCR'
+  | 'FAILED';
 
+export interface PdfDocumentDTO {
+  id: string;
+  userId: string;
+  examId: string | null;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  checksumSha256: string;
+  status: DocumentProcessingStatus;
+  pageCount: number | null;
+  extractedCharCount: number | null;
+  requiresOcr: boolean;
+  errorMessage: string | null;
+  processedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaginatedPdfDocumentsResponse {
+  items: PdfDocumentDTO[];
+  total: number;
+  currentPage: number;
+  totalPages: number;
+  limit: number;
+}
+
+export interface ListPdfDocumentsParams {
+  page?: number;
+  limit?: number;
+  status?: DocumentProcessingStatus | '';
+}

@@ -5,11 +5,16 @@ import {
   createQuestionRouter,
   type QuestionRouterDependencies,
 } from './question.routes.ts';
+import {
+  createPdfDocumentRouter,
+  type PdfDocumentRouterDependencies,
+} from './pdf-document.routes.ts';
 
 export interface ApiRouterDependencies {
   health?: HealthCheckDependencies;
   auth?: AuthRouterDependencies;
   questions?: QuestionRouterDependencies;
+  documents?: PdfDocumentRouterDependencies;
 }
 
 export function createApiRouter(deps?: ApiRouterDependencies): Router {
@@ -22,6 +27,14 @@ export function createApiRouter(deps?: ApiRouterDependencies): Router {
     createQuestionRouter({
       authService: deps?.questions?.authService ?? deps?.auth?.authService,
       questionService: deps?.questions?.questionService,
+    })
+  );
+  apiRouter.use(
+    '/documents',
+    createPdfDocumentRouter({
+      authService: deps?.documents?.authService ?? deps?.auth?.authService,
+      pdfDocumentService: deps?.documents?.pdfDocumentService,
+      multipartOptions: deps?.documents?.multipartOptions,
     })
   );
 

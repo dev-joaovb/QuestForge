@@ -13,6 +13,7 @@ import { ProfilePage } from './pages/ProfilePage.tsx';
 import { QuestionsListPage } from './pages/QuestionsListPage.tsx';
 import { QuestionFormPage } from './pages/QuestionFormPage.tsx';
 import { QuestionDetailPage } from './pages/QuestionDetailPage.tsx';
+import { DocumentsPage } from './pages/DocumentsPage.tsx';
 
 export function AppRoutes() {
   return (
@@ -27,6 +28,7 @@ export function AppRoutes() {
         <Route path="/questions/new" element={<QuestionFormPage mode="create" />} />
         <Route path="/questions/:id" element={<QuestionDetailPage />} />
         <Route path="/questions/:id/edit" element={<QuestionFormPage mode="edit" />} />
+        <Route path="/documents" element={<DocumentsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthProvider>
@@ -40,5 +42,3 @@ export default function App() {
     </BrowserRouter>
   );
 }
-
-

@@ -66,6 +66,12 @@ export function Navbar() {
           {status === 'authenticated' && user ? (
             <>
               <Link
+                to="/documents"
+                className="whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
+              >
+                Documentos PDF
+              </Link>
+              <Link
                 to="/questions"
                 className="whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
               >
@@ -141,6 +147,13 @@ export function Navbar() {
           <div className="mt-4 flex flex-col gap-2 border-t border-neutral-800 pt-4">
             {status === 'authenticated' && user ? (
               <>
+                <Link
+                  to="/documents"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full rounded-md border border-neutral-800 px-4 py-2.5 text-center text-sm font-medium text-neutral-200 hover:bg-neutral-900 focus-visible:outline-2 focus-visible:outline-[#2563EB]"
+                >
+                  Documentos PDF
+                </Link>
                 <Link
                   to="/questions"
                   onClick={() => setMobileMenuOpen(false)}
