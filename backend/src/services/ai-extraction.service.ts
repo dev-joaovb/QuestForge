@@ -13,6 +13,8 @@ import {
 import { raceWithSignal } from '../utils/pdf-extractor.ts';
 import { logger } from '../utils/logger.ts';
 
+import { createOllamaCompletionFn, OllamaChatAdapter } from './ollama-adapter.service.ts';
+
 export const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434';
 export const DEFAULT_OLLAMA_TIMEOUT_MS = 45_000;
 
@@ -209,7 +211,15 @@ export class ConfigurableAiQuestionExtractionService
       (Number(process.env.AI_MAX_QUESTIONS_PER_DOCUMENT) ||
         DEFAULT_MAX_EXTRACTED_QUESTIONS);
 
-    this.completionFn = options.completionFn;
+    this.completionFn =
+      options.completionFn ??
+      (this.modelName
+        ? createOllamaCompletionFn({
+            baseUrl: this.baseUrl,
+            defaultModel: this.modelName,
+            defaultTimeoutMs: this.defaultTimeoutMs,
+          })
+        : undefined);
     this.now = options.now ?? (() => new Date());
   }
 
@@ -219,6 +229,17 @@ export class ConfigurableAiQuestionExtractionService
       typeof this.modelName === 'string' &&
       this.modelName.trim().length > 0
     );
+  }
+
+  /**
+   * Retorna o adaptador Ollama dedicado para verificações de conectividade e tags (health-check/setup).
+   */
+  getOllamaAdapter(): OllamaChatAdapter {
+    return new OllamaChatAdapter({
+      baseUrl: this.baseUrl,
+      defaultModel: this.modelName ?? undefined,
+      defaultTimeoutMs: this.defaultTimeoutMs,
+    });
   }
 
   getStatus(): AiExtractionServiceStatus {
@@ -410,3 +431,28 @@ export class ConfigurableAiQuestionExtractionService
     }
   }
 }
+
+/**
+ * Factory padronizada para inicialização do serviço de extração inteligente no backend.
+ * Mantém UnconfiguredAiQuestionExtractionService se OLLAMA_MODEL não estiver configurado,
+ * ou instancia ConfigurableAiQuestionExtractionService com o OllamaChatAdapter concreto conectado.
+ */
+export function createAiQuestionExtractionService(
+  options?: ConfigurableAiQuestionExtractionServiceOptions
+): IAiQuestionExtractionService {
+  const envModel = process.env.OLLAMA_MODEL?.trim();
+  const hasModel =
+    options?.modelName !== undefined
+      ? Boolean(options.modelName)
+      : Boolean(envModel && envModel !== 'SEU_MODELO_AQUI');
+
+  if (!hasModel && !options?.completionFn) {
+    return new UnconfiguredAiQuestionExtractionService({
+      baseUrl: options?.baseUrl,
+      modelName: null,
+    });
+  }
+
+  return new ConfigurableAiQuestionExtractionService(options);
+}
+

@@ -13,6 +13,8 @@ export type PdfDocumentErrorCode =
   | 'DOCUMENT_FORBIDDEN'
   | 'DOCUMENT_ALREADY_PROCESSING'
   | 'DOCUMENT_INVALID_OCR_STATE'
+  | 'DOCUMENT_NEEDS_OCR'
+  | 'DOCUMENT_NO_TEXT'
   | 'STORAGE_UNAVAILABLE';
 
 export class PdfDocumentDomainError extends Error {
@@ -145,3 +147,34 @@ export interface PaginatedPdfDocumentsResult {
   totalPages: number;
   limit: number;
 }
+
+/**
+ * Contrato de entrada para o corpo da requisição de extração de questões a partir de documento PDF
+ * (Sprint 4 — Etapa 4.3). Permite pistas contextuais opcionais, sem permitir timeout definido pelo cliente.
+ */
+export interface ExtractQuestionsBodyDTO {
+  defaultSubject?: string | null;
+  defaultBoard?: string | null;
+  defaultExamTitle?: string | null;
+  defaultYear?: number | null;
+  maxQuestions?: number;
+}
+
+/**
+ * Resultado da recuperação segura e tipada do texto de um documento PDF elegível para IA
+ * (Sprint 4 — Etapa 4.3 — Passo 2).
+ *
+ * Fornece o texto persistido no banco e os metadados contextuais estritamente necessários
+ * para a geração de prompt, omitindo storageBucket, objectKey e detalhes internos de infraestrutura.
+ */
+export interface EligiblePdfDocumentTextResult {
+  id: string;
+  userId: string;
+  examId: string | null;
+  originalName: string;
+  extractedText: string;
+  extractedCharCount: number;
+  pageCount: number | null;
+  status: DocumentProcessingStatus;
+}
+

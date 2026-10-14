@@ -34,6 +34,7 @@ export function createApiRouter(deps?: ApiRouterDependencies): Router {
     createPdfDocumentRouter({
       authService: deps?.documents?.authService ?? deps?.auth?.authService,
       pdfDocumentService: deps?.documents?.pdfDocumentService,
+      aiExtractionService: deps?.documents?.aiExtractionService,
       multipartOptions: deps?.documents?.multipartOptions,
     })
   );

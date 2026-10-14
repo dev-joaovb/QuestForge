@@ -3,9 +3,14 @@ import path from 'node:path';
 import { z } from 'zod';
 import {
   PdfDocumentDomainError,
+  type ExtractQuestionsBodyDTO,
   type PdfUploadFileInput,
   type ValidatedPdfFileMetadata,
 } from '../types/pdf-document.types.ts';
+import {
+  ABSOLUTE_MAX_EXTRACTED_QUESTIONS,
+  DEFAULT_MAX_EXTRACTED_QUESTIONS,
+} from './ai-extraction.validator.ts';
 
 export const DEFAULT_MAX_PDF_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
@@ -178,3 +183,165 @@ export function validatePdfFileInput(
     pdfHeaderVersion: version,
   };
 }
+
+const PLACEHOLDER_NULL_VALUES = new Set([
+  '',
+  'null',
+  'undefined',
+  'n/a',
+  'na',
+  'none',
+  'nenhum',
+  'nenhuma',
+  'desconhecido',
+  'desconhecida',
+  'nao informado',
+  'não informado',
+  'nao consta',
+  'não consta',
+  '-',
+  '--',
+  '?',
+]);
+
+/**
+ * Normaliza valores de strings opcionais enviadas no corpo de contexto da extração.
+ * Se o campo não foi fornecido (undefined), permanece undefined.
+ * Se foi fornecido como null, vazio ou placeholder genérico ("N/A", "null"), converte para null.
+ * Se possui valor válido, aplica trim e compacta espaços repetidos.
+ */
+function normalizeOptionalContextString(
+  value: string | null | undefined
+): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  const trimmed = value.replace(/\s+/g, ' ').trim();
+  if (!trimmed || PLACEHOLDER_NULL_VALUES.has(trimmed.toLowerCase())) {
+    return null;
+  }
+  return trimmed;
+}
+
+/**
+ * Retorna o limite máximo de questões permitido por documento, respeitando a variável
+ * de ambiente AI_MAX_QUESTIONS_PER_DOCUMENT e o teto absoluto ABSOLUTE_MAX_EXTRACTED_QUESTIONS.
+ */
+export function getMaxQuestionsAllowed(configuredLimit?: number): number {
+  if (
+    typeof configuredLimit === 'number' &&
+    Number.isInteger(configuredLimit) &&
+    configuredLimit > 0
+  ) {
+    return Math.min(configuredLimit, ABSOLUTE_MAX_EXTRACTED_QUESTIONS);
+  }
+  const envValue = Number(process.env.AI_MAX_QUESTIONS_PER_DOCUMENT);
+  if (Number.isInteger(envValue) && envValue > 0) {
+    return Math.min(envValue, ABSOLUTE_MAX_EXTRACTED_QUESTIONS);
+  }
+  return DEFAULT_MAX_EXTRACTED_QUESTIONS;
+}
+
+/**
+ * Schema estrito de validação do corpo opcional da requisição do endpoint POST /api/documents/:id/extract.
+ *
+ * Regras estritas (Sprint 4 — Etapa 4.3):
+ * 1. Permite exclusivamente pistas contextuais opcionais: defaultSubject, defaultBoard, defaultExamTitle,
+ *    defaultYear e maxQuestions.
+ * 2. PROIBIDO o cliente definir timeoutMs (rejeitado via .strict(), o tempo limite segue OLLAMA_TIMEOUT_MS do servidor).
+ * 3. Proíbe qualquer propriedade inesperada via .strict().
+ * 4. Campos omitidos continuam omitidos (undefined) para permitir herança fiel do exame vinculado.
+ * 5. Não inventa metadados ou valores padrão inexistentes.
+ * 6. maxQuestions deve ser inteiro positivo e respeitar AI_MAX_QUESTIONS_PER_DOCUMENT (com teto em ABSOLUTE_MAX_EXTRACTED_QUESTIONS).
+ */
+export const extractQuestionsBodySchema = z
+  .object({
+    defaultSubject: z
+      .string()
+      .max(120, 'A disciplina deve possuir no máximo 120 caracteres.')
+      .nullable()
+      .optional()
+      .transform((v) => normalizeOptionalContextString(v)),
+    defaultBoard: z
+      .string()
+      .max(120, 'A banca examinadora deve possuir no máximo 120 caracteres.')
+      .nullable()
+      .optional()
+      .transform((v) => normalizeOptionalContextString(v)),
+    defaultExamTitle: z
+      .string()
+      .max(200, 'O título do exame deve possuir no máximo 200 caracteres.')
+      .nullable()
+      .optional()
+      .transform((v) => normalizeOptionalContextString(v)),
+    defaultYear: z
+      .union([
+        z
+          .number()
+          .int('O ano do exame deve ser um número inteiro.')
+          .min(1950, 'O ano do exame deve ser maior ou igual a 1950.')
+          .max(2100, 'O ano do exame deve ser menor ou igual a 2100.'),
+        z.null(),
+      ])
+      .optional(),
+    maxQuestions: z
+      .number()
+      .int('maxQuestions deve ser um número inteiro.')
+      .positive('maxQuestions deve ser um número positivo maior que zero.')
+      .optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.maxQuestions !== undefined) {
+      const allowedLimit = getMaxQuestionsAllowed();
+      if (data.maxQuestions > allowedLimit) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['maxQuestions'],
+          message: `maxQuestions não pode exceder o limite configurado de ${allowedLimit} questões por documento.`,
+        });
+      }
+    }
+  });
+
+export type ExtractQuestionsBodyInput = z.input<typeof extractQuestionsBodySchema>;
+export type ParsedExtractQuestionsBody = z.output<typeof extractQuestionsBodySchema>;
+
+/**
+ * Valida o corpo da requisição de extração de questões e lança PdfDocumentDomainError(PDF_VALIDATION_ERROR, 400)
+ * em caso de falha de validação ou propriedades não permitidas.
+ */
+export function validateExtractQuestionsBody(
+  rawBody: unknown,
+  options?: { maxQuestionsLimit?: number }
+): ParsedExtractQuestionsBody {
+  const payload = rawBody === undefined || rawBody === null ? {} : rawBody;
+  const parsed = extractQuestionsBodySchema.safeParse(payload);
+
+  if (!parsed.success) {
+    const firstIssue = parsed.error.issues[0];
+    const fieldPath = firstIssue?.path?.length ? ` (${firstIssue.path.join('.')})` : '';
+    throw new PdfDocumentDomainError(
+      'PDF_VALIDATION_ERROR',
+      `Parâmetros de extração inválidos${fieldPath}: ${firstIssue?.message ?? 'dados incorretos.'}`,
+      400
+    );
+  }
+
+  if (options?.maxQuestionsLimit && parsed.data.maxQuestions !== undefined) {
+    const customLimit = getMaxQuestionsAllowed(options.maxQuestionsLimit);
+    if (parsed.data.maxQuestions > customLimit) {
+      throw new PdfDocumentDomainError(
+        'PDF_VALIDATION_ERROR',
+        `maxQuestions não pode exceder o limite permitido de ${customLimit} questões por documento.`,
+        400
+      );
+    }
+  }
+
+  return parsed.data;
+}
+

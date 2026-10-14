@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {
   PdfDocumentDomainError,
+  type EligiblePdfDocumentTextResult,
   type OcrServiceStatus,
   type PaginatedPdfDocumentsResult,
   type PdfDocumentDetailDTO,
@@ -556,5 +557,122 @@ export class PdfDocumentService {
       documentId: existing.id,
       userId: actorUserId,
     });
+  }
+
+  /**
+   * Recupera de forma segura e tipada o texto persistido de um documento PDF elegível para
+   * extração de questões por IA (Sprint 4 — Etapa 4.3 — Passo 2).
+   *
+   * Regras de segurança e validação:
+   * 1. Autenticação obrigatória (actorUserId não vazio).
+   * 2. Existência do documento (DOCUMENT_NOT_FOUND, 404).
+   * 3. Controle de acesso por proprietário (DOCUMENT_FORBIDDEN, 403).
+   * 4. Estado de processamento:
+   *    - UPLOADED ou PROCESSING: DOCUMENT_ALREADY_PROCESSING (409)
+   *    - NEEDS_OCR ou requiresOcr === true: DOCUMENT_NEEDS_OCR (422)
+   *    - FAILED: PDF_EXTRACTION_FAILED (422)
+   *    - Diferente de COMPLETED: DOCUMENT_INVALID_OCR_STATE (409)
+   * 5. Presença de texto extraído utilizável (DOCUMENT_NO_TEXT, 422 se null, vazio ou whitespace).
+   */
+  async getDocumentTextForAiExtraction(
+    actorUserId: string,
+    documentId: string
+  ): Promise<EligiblePdfDocumentTextResult> {
+    if (!actorUserId || typeof actorUserId !== 'string' || actorUserId.trim().length === 0) {
+      throw new PdfDocumentDomainError(
+        'DOCUMENT_FORBIDDEN',
+        'Usuário autenticado é obrigatório para acessar o texto do documento PDF.',
+        403
+      );
+    }
+
+    if (!documentId || typeof documentId !== 'string' || documentId.trim().length === 0) {
+      throw new PdfDocumentDomainError(
+        'DOCUMENT_NOT_FOUND',
+        'Documento PDF não encontrado.',
+        404
+      );
+    }
+
+    const existing = await this.repository.findById(documentId);
+    if (!existing) {
+      throw new PdfDocumentDomainError(
+        'DOCUMENT_NOT_FOUND',
+        'Documento PDF não encontrado.',
+        404
+      );
+    }
+
+    if (existing.userId !== actorUserId) {
+      throw new PdfDocumentDomainError(
+        'DOCUMENT_FORBIDDEN',
+        'Você não possui permissão para acessar este documento PDF.',
+        403
+      );
+    }
+
+    if (existing.status === 'PROCESSING' || existing.status === 'UPLOADED') {
+      throw new PdfDocumentDomainError(
+        'DOCUMENT_ALREADY_PROCESSING',
+        'O documento PDF ainda está em processamento e seu texto não está disponível.',
+        409
+      );
+    }
+
+    if (existing.status === 'NEEDS_OCR' || existing.requiresOcr) {
+      throw new PdfDocumentDomainError(
+        'DOCUMENT_NEEDS_OCR',
+        'O documento PDF necessita de processamento por OCR antes da extração de questões por IA.',
+        422
+      );
+    }
+
+    if (existing.status === 'FAILED') {
+      throw new PdfDocumentDomainError(
+        'PDF_EXTRACTION_FAILED',
+        'O processamento anterior deste documento PDF falhou e não há texto disponível.',
+        422
+      );
+    }
+
+    if (existing.status !== 'COMPLETED') {
+      throw new PdfDocumentDomainError(
+        'DOCUMENT_INVALID_OCR_STATE',
+        `O documento PDF está no estado "${existing.status}" e não é elegível para extração de questões por IA.`,
+        409
+      );
+    }
+
+    if (!existing.extractedText || existing.extractedText.trim().length === 0) {
+      throw new PdfDocumentDomainError(
+        'DOCUMENT_NO_TEXT',
+        'O documento PDF não possui texto extraível legível para extração de questões por IA.',
+        422
+      );
+    }
+
+    logger.info('pdf_document_text_retrieved_for_ai', {
+      documentId: existing.id,
+      userId: actorUserId,
+      charCount: existing.extractedText.length,
+    });
+
+    return {
+      id: existing.id,
+      userId: existing.userId,
+      examId: existing.examId,
+      originalName: existing.originalName,
+      extractedText: existing.extractedText,
+      extractedCharCount: existing.extractedCharCount ?? existing.extractedText.length,
+      pageCount: existing.pageCount,
+      status: existing.status,
+    };
+  }
+
+  async getExtractedTextForDocument(
+    actorUserId: string,
+    documentId: string
+  ): Promise<EligiblePdfDocumentTextResult> {
+    return this.getDocumentTextForAiExtraction(actorUserId, documentId);
   }
 }

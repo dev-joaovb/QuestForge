@@ -729,4 +729,301 @@ describe('Etapa 3.1 — Validação, Armazenamento Privado e Extração Básica 
     await service.deleteUserDocument(USER_A, created.id);
     expect(await repo.findById(created.id)).toBeNull();
   });
+
+  describe('Sprint 4, Etapa 4.3 — Passo 2: Recuperação segura do texto do documento para IA', () => {
+    it('deve recuperar com sucesso o texto e metadados contextuais de documento elegível (status COMPLETED e texto válido)', async () => {
+      const now = new Date();
+      await repo.create({
+        id: 'doc-ai-eligible-1',
+        userId: USER_A,
+        examId: 'exam-concurso-2025',
+        originalName: 'prova_cebraspe.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageBucket: 'secret-bucket',
+        objectKey: 'secret-key-123.pdf',
+        checksumSha256: 'a'.repeat(64),
+        status: 'COMPLETED',
+      });
+
+      // Atualiza com texto persistido e metadados
+      const existing = await repo.findById('doc-ai-eligible-1');
+      expect(existing).not.toBeNull();
+      repo.records.set('doc-ai-eligible-1', {
+        ...existing!,
+        status: 'COMPLETED',
+        pageCount: 3,
+        extractedText: '1. (Cespe/2025) O princípio da legalidade é basilar ao Estado de Direito.\n( ) Certo ( ) Errado',
+        extractedCharCount: 91,
+        requiresOcr: false,
+        processedAt: now,
+      });
+
+      const result = await service.getDocumentTextForAiExtraction(USER_A, 'doc-ai-eligible-1');
+
+      expect(result).toEqual({
+        id: 'doc-ai-eligible-1',
+        userId: USER_A,
+        examId: 'exam-concurso-2025',
+        originalName: 'prova_cebraspe.pdf',
+        extractedText: '1. (Cespe/2025) O princípio da legalidade é basilar ao Estado de Direito.\n( ) Certo ( ) Errado',
+        extractedCharCount: 91,
+        pageCount: 3,
+        status: 'COMPLETED',
+      });
+
+      // Garante que chaves internas de storage não foram expostas
+      expect((result as unknown as Record<string, unknown>).objectKey).toBeUndefined();
+      expect((result as unknown as Record<string, unknown>).storageBucket).toBeUndefined();
+
+      // Confirma que o alias getExtractedTextForDocument produz o mesmo resultado
+      const aliasResult = await service.getExtractedTextForDocument(USER_A, 'doc-ai-eligible-1');
+      expect(aliasResult).toEqual(result);
+    });
+
+    it('deve rejeitar com DOCUMENT_NOT_FOUND (404) quando o documento não existir', async () => {
+      await expect(
+        service.getDocumentTextForAiExtraction(USER_A, 'doc-inexistente')
+      ).rejects.toMatchObject({
+        code: 'DOCUMENT_NOT_FOUND',
+        statusCode: 404,
+      });
+    });
+
+    it('deve rejeitar com DOCUMENT_NOT_FOUND (404) quando documentId for vazio ou em branco', async () => {
+      await expect(
+        service.getDocumentTextForAiExtraction(USER_A, '   ')
+      ).rejects.toMatchObject({
+        code: 'DOCUMENT_NOT_FOUND',
+        statusCode: 404,
+      });
+    });
+
+    it('deve rejeitar com DOCUMENT_FORBIDDEN (403) quando actorUserId não for informado ou for vazio', async () => {
+      await expect(
+        service.getDocumentTextForAiExtraction('', 'doc-1')
+      ).rejects.toMatchObject({
+        code: 'DOCUMENT_FORBIDDEN',
+        statusCode: 403,
+      });
+
+      await expect(
+        service.getDocumentTextForAiExtraction('   ', 'doc-1')
+      ).rejects.toMatchObject({
+        code: 'DOCUMENT_FORBIDDEN',
+        statusCode: 403,
+      });
+    });
+
+    it('deve rejeitar com DOCUMENT_FORBIDDEN (403) quando outro usuário tentar acessar o texto do documento', async () => {
+      await repo.create({
+        id: 'doc-owner-a-only',
+        userId: USER_A,
+        originalName: 'prova_privada.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageBucket: 'bucket',
+        objectKey: 'key',
+        checksumSha256: 'b'.repeat(64),
+        status: 'COMPLETED',
+      });
+
+      await expect(
+        service.getDocumentTextForAiExtraction(USER_B, 'doc-owner-a-only')
+      ).rejects.toMatchObject({
+        code: 'DOCUMENT_FORBIDDEN',
+        statusCode: 403,
+      });
+    });
+
+    it('deve rejeitar com DOCUMENT_ALREADY_PROCESSING (409) quando o documento estiver em processamento', async () => {
+      await repo.create({
+        id: 'doc-in-processing',
+        userId: USER_A,
+        originalName: 'processando.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageBucket: 'bucket',
+        objectKey: 'key-proc',
+        checksumSha256: 'c'.repeat(64),
+        status: 'PROCESSING',
+      });
+
+      await expect(
+        service.getDocumentTextForAiExtraction(USER_A, 'doc-in-processing')
+      ).rejects.toMatchObject({
+        code: 'DOCUMENT_ALREADY_PROCESSING',
+        statusCode: 409,
+      });
+
+      // Também para UPLOADED
+      const existing = await repo.findById('doc-in-processing');
+      repo.records.set('doc-in-processing', { ...existing!, status: 'UPLOADED' });
+
+      await expect(
+        service.getDocumentTextForAiExtraction(USER_A, 'doc-in-processing')
+      ).rejects.toMatchObject({
+        code: 'DOCUMENT_ALREADY_PROCESSING',
+        statusCode: 409,
+      });
+    });
+
+    it('deve rejeitar com DOCUMENT_NEEDS_OCR (422) quando o status for NEEDS_OCR', async () => {
+      await repo.create({
+        id: 'doc-scanned',
+        userId: USER_A,
+        originalName: 'escanear.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageBucket: 'bucket',
+        objectKey: 'key-scanned',
+        checksumSha256: 'd'.repeat(64),
+        status: 'NEEDS_OCR',
+      });
+
+      await expect(
+        service.getDocumentTextForAiExtraction(USER_A, 'doc-scanned')
+      ).rejects.toMatchObject({
+        code: 'DOCUMENT_NEEDS_OCR',
+        statusCode: 422,
+      });
+    });
+
+    it('deve rejeitar com DOCUMENT_NEEDS_OCR (422) quando requiresOcr for true mesmo com status COMPLETED', async () => {
+      await repo.create({
+        id: 'doc-hybrid-ocr',
+        userId: USER_A,
+        originalName: 'hibrido.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageBucket: 'bucket',
+        objectKey: 'key-hybrid',
+        checksumSha256: 'e'.repeat(64),
+        status: 'COMPLETED',
+      });
+      const existing = await repo.findById('doc-hybrid-ocr');
+      repo.records.set('doc-hybrid-ocr', {
+        ...existing!,
+        requiresOcr: true,
+        extractedText: 'Texto parcial da primeira pagina apenas',
+      });
+
+      await expect(
+        service.getDocumentTextForAiExtraction(USER_A, 'doc-hybrid-ocr')
+      ).rejects.toMatchObject({
+        code: 'DOCUMENT_NEEDS_OCR',
+        statusCode: 422,
+      });
+    });
+
+    it('deve rejeitar com PDF_EXTRACTION_FAILED (422) quando o status for FAILED', async () => {
+      await repo.create({
+        id: 'doc-failed',
+        userId: USER_A,
+        originalName: 'com_erro.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageBucket: 'bucket',
+        objectKey: 'key-failed',
+        checksumSha256: 'f'.repeat(64),
+        status: 'FAILED',
+      });
+
+      await expect(
+        service.getDocumentTextForAiExtraction(USER_A, 'doc-failed')
+      ).rejects.toMatchObject({
+        code: 'PDF_EXTRACTION_FAILED',
+        statusCode: 422,
+      });
+    });
+
+    it('deve rejeitar com DOCUMENT_NO_TEXT (422) quando extractedText for null ou string vazia', async () => {
+      await repo.create({
+        id: 'doc-empty-text',
+        userId: USER_A,
+        originalName: 'vazio.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageBucket: 'bucket',
+        objectKey: 'key-empty',
+        checksumSha256: '0'.repeat(64),
+        status: 'COMPLETED',
+      });
+      const existing = await repo.findById('doc-empty-text');
+      repo.records.set('doc-empty-text', {
+        ...existing!,
+        extractedText: null,
+      });
+
+      await expect(
+        service.getDocumentTextForAiExtraction(USER_A, 'doc-empty-text')
+      ).rejects.toMatchObject({
+        code: 'DOCUMENT_NO_TEXT',
+        statusCode: 422,
+      });
+
+      // String vazia ""
+      repo.records.set('doc-empty-text', {
+        ...existing!,
+        extractedText: '',
+      });
+
+      await expect(
+        service.getDocumentTextForAiExtraction(USER_A, 'doc-empty-text')
+      ).rejects.toMatchObject({
+        code: 'DOCUMENT_NO_TEXT',
+        statusCode: 422,
+      });
+    });
+
+    it('deve rejeitar com DOCUMENT_NO_TEXT (422) quando extractedText contiver apenas caracteres de espaco em branco', async () => {
+      await repo.create({
+        id: 'doc-whitespace-only',
+        userId: USER_A,
+        originalName: 'espacos.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageBucket: 'bucket',
+        objectKey: 'key-ws',
+        checksumSha256: '1'.repeat(64),
+        status: 'COMPLETED',
+      });
+      const existing = await repo.findById('doc-whitespace-only');
+      repo.records.set('doc-whitespace-only', {
+        ...existing!,
+        extractedText: '   \n\t  \r\n   ',
+      });
+
+      await expect(
+        service.getDocumentTextForAiExtraction(USER_A, 'doc-whitespace-only')
+      ).rejects.toMatchObject({
+        code: 'DOCUMENT_NO_TEXT',
+        statusCode: 422,
+      });
+    });
+
+    it('deve preencher extractedCharCount com fallback no tamanho da string quando extração anterior não tiver persistido charCount', async () => {
+      await repo.create({
+        id: 'doc-fallback-chars',
+        userId: USER_A,
+        originalName: 'fallback.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        storageBucket: 'bucket',
+        objectKey: 'key-fb',
+        checksumSha256: '2'.repeat(64),
+        status: 'COMPLETED',
+      });
+      const existing = await repo.findById('doc-fallback-chars');
+      const text = 'Texto sem contagem explícita gravada no banco';
+      repo.records.set('doc-fallback-chars', {
+        ...existing!,
+        extractedText: text,
+        extractedCharCount: null,
+      });
+
+      const res = await service.getDocumentTextForAiExtraction(USER_A, 'doc-fallback-chars');
+      expect(res.extractedCharCount).toBe(text.length);
+    });
+  });
 });

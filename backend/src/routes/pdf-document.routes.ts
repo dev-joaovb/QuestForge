@@ -33,6 +33,7 @@ export function createPdfDocumentRouter(
   );
   const controller = createPdfDocumentController({
     pdfDocumentService: deps.pdfDocumentService,
+    aiExtractionService: deps.aiExtractionService,
   });
 
   router.use(requireAuth);
@@ -41,6 +42,7 @@ export function createPdfDocumentRouter(
   router.get('/:id', controller.getById);
   router.post('/', parseMultipartPdf, controller.upload);
   router.post('/:id/ocr', controller.processOcr);
+  router.post('/:id/extract', controller.extractQuestions);
   router.delete('/:id', controller.remove);
 
   return router;

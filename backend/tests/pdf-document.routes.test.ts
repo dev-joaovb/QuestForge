@@ -26,7 +26,118 @@ import type {
   PutPrivateObjectInput,
   StoredPrivateObjectInfo,
 } from '../src/services/storage.service.ts';
+import type { IAiQuestionExtractionService } from '../src/services/ai-extraction.service.ts';
+import { AiExtractionDomainError } from '../src/types/ai-extraction.types.ts';
+import type {
+  AiQuestionExtractionRequest,
+  AiQuestionExtractionResult,
+  ExtractedQuestionDraft,
+} from '../src/types/ai-extraction.types.ts';
 import { buildRealPdfBuffer } from './pdf-document.service.test.ts';
+
+class MockAiQuestionExtractionService implements IAiQuestionExtractionService {
+  public available = true;
+  public simulateTimeout = false;
+  public simulateFailure = false;
+  public lastRequest: AiQuestionExtractionRequest | null = null;
+  public mockQuestions: ExtractedQuestionDraft[] = [
+    {
+      originalNumber: 1,
+      statement: 'Sobre os princípios constitucionais fundamentais, assinale a alternativa correta.',
+      type: 'MULTIPLE_CHOICE',
+      subject: 'Direito Constitucional',
+      topic: null,
+      subtopic: null,
+      board: 'CESPE',
+      examTitle: 'Concurso Público 2024',
+      year: 2024,
+      difficulty: null,
+      correctAnswer: 'A',
+      explanation: null,
+      sourcePage: 1,
+      sourceDocumentId: null,
+      status: 'NEEDS_REVIEW',
+      requiresHumanReview: true,
+      reviewWarnings: [],
+      alternatives: [
+        { letter: 'A', text: 'A República Federativa do Brasil rege-se pelo princípio da prevalência dos direitos humanos.', position: 1 },
+        { letter: 'B', text: 'A soberania não constitui fundamento da República.', position: 2 },
+      ],
+    },
+  ];
+
+  isAvailable(): boolean {
+    return this.available;
+  }
+
+  getStatus() {
+    return {
+      available: this.available,
+      providerName: 'mock-ai',
+      modelName: this.available ? 'mock-model' : null,
+      baseUrl: 'http://mock-ai:11434',
+      message: this.available ? 'Mock AI available' : 'Mock AI unavailable',
+    };
+  }
+
+  async extractQuestionsFromText(
+    request: AiQuestionExtractionRequest
+  ): Promise<AiQuestionExtractionResult> {
+    this.lastRequest = request;
+
+    if (!this.available) {
+      throw new AiExtractionDomainError(
+        'AI_EXTRACTION_UNAVAILABLE',
+        'Extração inteligente indisponível no momento.',
+        503
+      );
+    }
+
+    if (this.simulateTimeout) {
+      throw new AiExtractionDomainError(
+        'AI_EXTRACTION_TIMEOUT',
+        'A extração inteligente excedeu o tempo limite.',
+        504
+      );
+    }
+
+    if (this.simulateFailure) {
+      throw new AiExtractionDomainError(
+        'AI_EXTRACTION_FAILED',
+        'Falha upstream ao comunicar com o provedor de IA.',
+        502
+      );
+    }
+
+    return {
+      providerName: 'mock-ai',
+      modelName: 'mock-model',
+      sourceDocumentId: request.sourceDocumentId ?? null,
+      sourceKind: request.sourceKind ?? 'DIGITAL_PDF_TEXT',
+      examMetadata: {
+        title: request.defaultExamTitle ?? null,
+        institution: null,
+        board: request.defaultBoard ?? null,
+        year: request.defaultYear ?? null,
+        position: null,
+        description: null,
+      },
+      questions: this.mockQuestions.map((q) => ({
+        ...q,
+        subject: request.defaultSubject ?? q.subject,
+        board: request.defaultBoard ?? q.board,
+        examTitle: request.defaultExamTitle ?? q.examTitle,
+        year: request.defaultYear ?? q.year,
+        sourceDocumentId: request.sourceDocumentId ?? null,
+      })),
+      answerKey: [{ questionNumber: 1, correctAnswer: 'A', isAnnulled: false, sourcePage: 1 }],
+      totalExtractedQuestions: this.mockQuestions.length,
+      questionsNeedingSubject: 0,
+      warnings: [],
+      extractedAt: new Date('2026-10-13T12:00:00Z'),
+    };
+  }
+}
 
 class InMemoryUserRepository implements IUserRepository {
   public users = new Map<string, User>();
@@ -977,5 +1088,418 @@ describe('Rotas HTTP de Documentos PDF — /api/documents (backend/tests/pdf-doc
 
     expect(dbFailureRes.status).toBe(503);
     expect(dbFailureRes.body.error).toBe('ServiceUnavailable');
+  });
+
+  describe('Sprint 4, Etapa 4.3 — Extração Inteligente via POST /api/documents/:id/extract', () => {
+    let mockAiService: MockAiQuestionExtractionService;
+    let appWithAi: ReturnType<typeof createApp>;
+
+    beforeEach(() => {
+      mockAiService = new MockAiQuestionExtractionService();
+      appWithAi = createApp({
+        csrf: { allowedOrigins: [ALLOWED_ORIGIN] },
+        auth: {
+          authService,
+          nodeEnv: 'test',
+          rateLimit: { windowMs: 60 * 1000, maxAttempts: 50 },
+        },
+        documents: {
+          authService,
+          pdfDocumentService,
+          aiExtractionService: mockAiService,
+          multipartOptions: {
+            maxFileSizeBytes: MAX_TEST_FILE_BYTES,
+            maxFiles: 1,
+            maxFields: 10,
+          },
+        },
+      });
+    });
+
+    it('deve exigir autenticação (401 Unauthorized) em POST /api/documents/:id/extract', async () => {
+      const response = await request(appWithAi)
+        .post('/api/documents/doc-1/extract')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBe('Unauthorized');
+    });
+
+    it('deve exigir proteção CSRF (403 CsrfValidationFailed) em POST /api/documents/:id/extract', async () => {
+      const response = await request(appWithAi)
+        .post('/api/documents/doc-1/extract')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .send({});
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBe('CsrfValidationFailed');
+    });
+
+    it('deve rejeitar corpo com parâmetros proibidos como timeoutMs com 400 PDF_VALIDATION_ERROR', async () => {
+      const response = await request(appWithAi)
+        .post('/api/documents/doc-1/extract')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({
+          timeoutMs: 5000, // cliente não pode definir timeout
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('PDF_VALIDATION_ERROR');
+      expect(response.body.message).toContain('timeoutMs');
+    });
+
+    it('deve rejeitar corpo com parâmetros inválidos (maxQuestions negativo, ano fora dos limites)', async () => {
+      const invalidNumberRes = await request(appWithAi)
+        .post('/api/documents/doc-1/extract')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({
+          maxQuestions: -1,
+        });
+
+      expect(invalidNumberRes.status).toBe(400);
+      expect(invalidNumberRes.body.error).toBe('PDF_VALIDATION_ERROR');
+
+      const invalidYearRes = await request(appWithAi)
+        .post('/api/documents/doc-1/extract')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({
+          defaultYear: 1800,
+        });
+
+      expect(invalidYearRes.status).toBe(400);
+      expect(invalidYearRes.body.error).toBe('PDF_VALIDATION_ERROR');
+    });
+
+    it('deve retornar 404 DOCUMENT_NOT_FOUND para documento inexistente', async () => {
+      const response = await request(appWithAi)
+        .post('/api/documents/doc-nao-existe-123/extract')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe('DOCUMENT_NOT_FOUND');
+    });
+
+    it('deve garantir isolamento multi-tenant (403 DOCUMENT_FORBIDDEN) se usuário tentar extrair PDF de outro usuário', async () => {
+      const digitalPdf = buildRealPdfBuffer({
+        pageTexts: ['Texto digital da candidata A'],
+      });
+
+      const uploadRes = await request(appWithAi)
+        .post('/api/documents')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .attach('file', digitalPdf, {
+          filename: 'privado_a.pdf',
+          contentType: 'application/pdf',
+        });
+
+      expect(uploadRes.status).toBe(201);
+      const docAId = uploadRes.body.document.id;
+
+      // Usuário B tenta acionar extração do PDF do Usuário A
+      const forbiddenRes = await request(appWithAi)
+        .post(`/api/documents/${docAId}/extract`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserB)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+
+      expect(forbiddenRes.status).toBe(403);
+      expect(forbiddenRes.body.error).toBe('DOCUMENT_FORBIDDEN');
+    });
+
+    it('deve rejeitar extração de documento em estado incompatível (PROCESSING: 409, NEEDS_OCR: 422, SEM TEXTO: 422, FAILED: 422)', async () => {
+      const digitalPdf = buildRealPdfBuffer({
+        pageTexts: ['Texto de prova inicial'],
+      });
+
+      const uploadRes = await request(appWithAi)
+        .post('/api/documents')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .attach('file', digitalPdf, {
+          filename: 'estados_teste.pdf',
+          contentType: 'application/pdf',
+        });
+
+      expect(uploadRes.status).toBe(201);
+      const docId = uploadRes.body.document.id;
+
+      // 1. Em PROCESSING -> 409 DOCUMENT_ALREADY_PROCESSING
+      await pdfRepo.markProcessing(docId);
+      const processingRes = await request(appWithAi)
+        .post(`/api/documents/${docId}/extract`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+      expect(processingRes.status).toBe(409);
+      expect(processingRes.body.error).toBe('DOCUMENT_ALREADY_PROCESSING');
+
+      // 2. Em NEEDS_OCR -> 422 DOCUMENT_NEEDS_OCR
+      await pdfRepo.markExtractionCompleted(docId, {
+        status: 'NEEDS_OCR',
+        pageCount: 1,
+        extractedText: null,
+        extractedCharCount: 0,
+        requiresOcr: true,
+        processedAt: new Date(),
+      });
+      const ocrRes = await request(appWithAi)
+        .post(`/api/documents/${docId}/extract`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+      expect(ocrRes.status).toBe(422);
+      expect(ocrRes.body.error).toBe('DOCUMENT_NEEDS_OCR');
+
+      // 3. Em COMPLETED mas sem texto -> 422 DOCUMENT_NO_TEXT
+      await pdfRepo.markExtractionCompleted(docId, {
+        status: 'COMPLETED',
+        pageCount: 1,
+        extractedText: '   ',
+        extractedCharCount: 0,
+        requiresOcr: false,
+        processedAt: new Date(),
+      });
+      const noTextRes = await request(appWithAi)
+        .post(`/api/documents/${docId}/extract`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+      expect(noTextRes.status).toBe(422);
+      expect(noTextRes.body.error).toBe('DOCUMENT_NO_TEXT');
+
+      // 4. Em FAILED -> 422 PDF_EXTRACTION_FAILED
+      await pdfRepo.markFailed(docId, 'Falha fatal prévia no processamento', new Date());
+      const failedRes = await request(appWithAi)
+        .post(`/api/documents/${docId}/extract`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+      expect(failedRes.status).toBe(422);
+      expect(failedRes.body.error).toBe('PDF_EXTRACTION_FAILED');
+    });
+
+    it('deve extrair questões com sucesso (200 OK) sobre PDF elegível, repassando contexto e retornando rascunhos sem persistir', async () => {
+      const digitalPdf = buildRealPdfBuffer({
+        pageTexts: ['Texto de prova digital completo para extração por IA'],
+      });
+
+      const uploadRes = await request(appWithAi)
+        .post('/api/documents')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .attach('file', digitalPdf, {
+          filename: 'prova_elegivel.pdf',
+          contentType: 'application/pdf',
+        });
+
+      expect(uploadRes.status).toBe(201);
+      const docId = uploadRes.body.document.id;
+
+      const extractRes = await request(appWithAi)
+        .post(`/api/documents/${docId}/extract`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({
+          defaultSubject: 'Direito Constitucional',
+          defaultBoard: 'CESPE',
+          defaultExamTitle: 'Tribunal Regional Federal',
+          defaultYear: 2024,
+          maxQuestions: 20,
+        });
+
+      expect(extractRes.status).toBe(200);
+      expect(extractRes.body.extraction).toBeDefined();
+      expect(extractRes.body.extraction.providerName).toBe('mock-ai');
+      expect(extractRes.body.extraction.modelName).toBe('mock-model');
+      expect(extractRes.body.extraction.sourceDocumentId).toBe(docId);
+      expect(extractRes.body.extraction.totalExtractedQuestions).toBe(1);
+      expect(Array.isArray(extractRes.body.extraction.questions)).toBe(true);
+      expect(extractRes.body.extraction.questions[0].requiresHumanReview).toBe(true);
+      expect(extractRes.body.extraction.questions[0].status).toBe('NEEDS_REVIEW');
+      expect(extractRes.body.extraction.questions[0].subject).toBe('Direito Constitucional');
+      expect(extractRes.body.extraction.questions[0].board).toBe('CESPE');
+      expect(extractRes.body.extraction.questions[0].year).toBe(2024);
+
+      // Garante que o adapter/service recebeu os parâmetros contextuais
+      expect(mockAiService.lastRequest?.sourceDocumentId).toBe(docId);
+      expect(mockAiService.lastRequest?.defaultSubject).toBe('Direito Constitucional');
+      expect(mockAiService.lastRequest?.defaultBoard).toBe('CESPE');
+      expect(mockAiService.lastRequest?.maxQuestions).toBe(20);
+    });
+
+    it('deve retornar 503 AI_EXTRACTION_UNAVAILABLE quando a IA estiver indisponível ou desconfigurada', async () => {
+      // 1. Com app padrão sem provedor de IA (UnconfiguredAiQuestionExtractionService)
+      const digitalPdf = buildRealPdfBuffer({
+        pageTexts: ['Texto de prova digital completo'],
+      });
+
+      const uploadRes = await request(app)
+        .post('/api/documents')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .attach('file', digitalPdf, {
+          filename: 'prova_unconfigured.pdf',
+          contentType: 'application/pdf',
+        });
+
+      expect(uploadRes.status).toBe(201);
+      const docId = uploadRes.body.document.id;
+
+      const unconfiguredRes = await request(app)
+        .post(`/api/documents/${docId}/extract`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+
+      expect(unconfiguredRes.status).toBe(503);
+      expect(unconfiguredRes.body.error).toBe('AI_EXTRACTION_UNAVAILABLE');
+
+      // 2. Com mockAiService marcado como indisponível
+      mockAiService.available = false;
+      const unavailableRes = await request(appWithAi)
+        .post(`/api/documents/${docId}/extract`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+
+      expect(unavailableRes.status).toBe(503);
+      expect(unavailableRes.body.error).toBe('AI_EXTRACTION_UNAVAILABLE');
+    });
+
+    it('deve propagar timeout da IA como 504 AI_EXTRACTION_TIMEOUT e falha upstream como 502 AI_EXTRACTION_FAILED', async () => {
+      const digitalPdf = buildRealPdfBuffer({
+        pageTexts: ['Texto de prova para testar timeout'],
+      });
+
+      const uploadRes = await request(appWithAi)
+        .post('/api/documents')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .attach('file', digitalPdf, {
+          filename: 'prova_timeout.pdf',
+          contentType: 'application/pdf',
+        });
+
+      expect(uploadRes.status).toBe(201);
+      const docId = uploadRes.body.document.id;
+
+      // Timeout -> 504
+      mockAiService.simulateTimeout = true;
+      const timeoutRes = await request(appWithAi)
+        .post(`/api/documents/${docId}/extract`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+
+      expect(timeoutRes.status).toBe(504);
+      expect(timeoutRes.body.error).toBe('AI_EXTRACTION_TIMEOUT');
+
+      // Falha upstream -> 502
+      mockAiService.simulateTimeout = false;
+      mockAiService.simulateFailure = true;
+      const failureRes = await request(appWithAi)
+        .post(`/api/documents/${docId}/extract`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+
+      expect(failureRes.status).toBe(502);
+      expect(failureRes.body.error).toBe('AI_EXTRACTION_FAILED');
+    });
+
+    it('deve retornar 503 ServiceUnavailable em erro inesperado de infraestrutura no banco ao recuperar documento', async () => {
+      const digitalPdf = buildRealPdfBuffer({
+        pageTexts: ['Texto de prova com falha de banco'],
+      });
+
+      const uploadRes = await request(appWithAi)
+        .post('/api/documents')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .attach('file', digitalPdf, {
+          filename: 'prova_db_fail.pdf',
+          contentType: 'application/pdf',
+        });
+
+      expect(uploadRes.status).toBe(201);
+      const docId = uploadRes.body.document.id;
+
+      pdfRepo.simulateDbFailure = true;
+      const dbFailRes = await request(appWithAi)
+        .post(`/api/documents/${docId}/extract`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+
+      expect(dbFailRes.status).toBe(503);
+      expect(dbFailRes.body.error).toBe('ServiceUnavailable');
+    });
+
+    it('deve preservar o fluxo normal sem abortar a inferência prematuramente e remover listeners de conexão', async () => {
+      const digitalPdf = buildRealPdfBuffer({
+        pageTexts: ['Texto de prova normal para verificar integridade do sinal'],
+      });
+
+      const uploadRes = await request(appWithAi)
+        .post('/api/documents')
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .attach('file', digitalPdf, {
+          filename: 'prova_signal_normal.pdf',
+          contentType: 'application/pdf',
+        });
+
+      expect(uploadRes.status).toBe(201);
+      const docId = uploadRes.body.document.id;
+
+      let observedSignalAbortedDuringExecution: boolean | null = null;
+      const originalExtract = mockAiService.extractQuestionsFromText.bind(mockAiService);
+      mockAiService.extractQuestionsFromText = async (req) => {
+        observedSignalAbortedDuringExecution = Boolean(req.signal?.aborted);
+        return originalExtract(req);
+      };
+
+      const extractRes = await request(appWithAi)
+        .post(`/api/documents/${docId}/extract`)
+        .set('Origin', ALLOWED_ORIGIN)
+        .set('Cookie', cookieUserA)
+        .set('X-Requested-With', CSRF_HEADER_EXPECTED_VALUE)
+        .send({});
+
+      expect(extractRes.status).toBe(200);
+      expect(extractRes.body.extraction).toBeDefined();
+      expect(observedSignalAbortedDuringExecution).toBe(false);
+    });
   });
 });
