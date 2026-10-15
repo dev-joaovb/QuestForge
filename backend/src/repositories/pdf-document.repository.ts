@@ -1,5 +1,6 @@
 import type {
   DocumentProcessingStatus,
+  DocumentType,
   PdfDocument,
   Prisma,
   PrismaClient,
@@ -14,6 +15,7 @@ export interface CreatePdfDocumentRecordInput {
   id?: string;
   userId: string;
   examId?: string | null;
+  documentType?: DocumentType;
   originalName: string;
   mimeType: string;
   sizeBytes: number;
@@ -114,6 +116,7 @@ export class PrismaPdfDocumentRepository implements IPdfDocumentRepository {
         ...(data.id ? { id: data.id } : {}),
         userId: data.userId,
         examId: data.examId ?? null,
+        ...(data.documentType ? { documentType: data.documentType } : {}),
         originalName: data.originalName,
         mimeType: data.mimeType,
         sizeBytes: data.sizeBytes,

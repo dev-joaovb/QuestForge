@@ -1,8 +1,8 @@
 // ============================================================================
-// QUESTFORGE — PRISMA SCHEMA (SPRINT 3: INFRAESTRUTURA E DOCUMENTOS PDF)
+// QUESTFORGE — PRISMA SCHEMA (SPRINT 5: GABARITOS OFICIAIS)
 // ============================================================================
-// Modelos ativos: User, UserSession, Exam, Question, Alternative e PdfDocument.
-// Os modelos de IA e Simulados pertencem às Sprints 4 a 6.
+// Modelos ativos: User, UserSession, Exam, Question, Alternative,
+// PdfDocument, OfficialAnswerKey, OfficialAnswerKeyItem.
 // ============================================================================
 
 generator client {
@@ -12,6 +12,31 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+enum DocumentType {
+  EXAM
+  ANSWER_KEY
+}
+
+enum AnswerKeyType {
+  PRELIMINARY
+  FINAL
+  RECTIFIED
+}
+
+enum AnswerKeyStatus {
+  DRAFT
+  PUBLISHED
+  SUPERSEDED
+  ARCHIVED
+}
+
+enum AnswerKeyItemStatus {
+  ACTIVE
+  ANNULLED
+  CHANGED
+  NEEDS_REVIEW
 }
 
 enum QuestionType {
@@ -41,17 +66,18 @@ enum DocumentProcessingStatus {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  name         String
-  email        String        @unique
-  passwordHash String
-  avatarUrl    String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  sessions     UserSession[]
-  exams        Exam[]
-  questions    Question[]
-  pdfDocuments PdfDocument[]
+  id                 String              @id @default(uuid())
+  name               String
+  email              String              @unique
+  passwordHash       String
+  avatarUrl          String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  sessions           UserSession[]
+  exams              Exam[]
+  questions          Question[]
+  pdfDocuments       PdfDocument[]
+  officialAnswerKeys OfficialAnswerKey[]
 
   @@map("users")
 }
@@ -72,7 +98,7 @@ model UserSession {
 }
 
 model Exam {
-  id          String     @id @default(uuid())
+  id          String   @id @default(uuid())
   userId      String
   title       String
   institution String?
@@ -80,12 +106,13 @@ model Exam {
   year        Int?
   position    String?
   description String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  questions    Question[]
-  pdfDocuments PdfDocument[]
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions          Question[]
+  pdfDocuments       PdfDocument[]
+  officialAnswerKeys OfficialAnswerKey[]
 
   @@index([userId])
   @@index([board])
@@ -97,6 +124,7 @@ model PdfDocument {
   id                 String                   @id @default(uuid())
   userId             String
   examId             String?
+  documentType       DocumentType             @default(EXAM)
   originalName       String
   mimeType           String
   sizeBytes          Int
@@ -113,12 +141,14 @@ model PdfDocument {
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  exam Exam? @relation(fields: [examId], references: [id], onDelete: SetNull)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam               Exam?               @relation(fields: [examId], references: [id], onDelete: SetNull)
+  officialAnswerKeys OfficialAnswerKey[]
 
   @@index([userId, createdAt])
   @@index([userId, status])
   @@index([examId])
+  @@index([documentType])
   @@map("pdf_documents")
 }
 
@@ -143,9 +173,10 @@ model Question {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  exam         Exam?         @relation(fields: [examId], references: [id], onDelete: SetNull)
-  alternatives Alternative[]
+  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam           Exam?                   @relation(fields: [examId], references: [id], onDelete: SetNull)
+  alternatives   Alternative[]
+  answerKeyItems OfficialAnswerKeyItem[]
 
   @@index([userId, createdAt])
   @@index([userId, subject])
@@ -156,7 +187,7 @@ model Question {
 }
 
 model Alternative {
-  id         String   @id @default(uuid())
+  id         String @id @default(uuid())
   questionId String
   letter     String
   text       String
@@ -170,3 +201,54 @@ model Alternative {
   @@map("alternatives")
 }
 
+model OfficialAnswerKey {
+  id              String          @id @default(uuid())
+  userId          String
+  examId          String
+  pdfDocumentId   String?
+  type            AnswerKeyType   @default(PRELIMINARY)
+  status          AnswerKeyStatus @default(DRAFT)
+  version         Int             @default(1)
+  isCurrent       Boolean         @default(false)
+  publicationDate DateTime?
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam        Exam                    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  pdfDocument PdfDocument?            @relation(fields: [pdfDocumentId], references: [id], onDelete: SetNull)
+  items       OfficialAnswerKeyItem[]
+
+  @@unique([examId, type, version])
+  @@index([userId])
+  @@index([examId, isCurrent])
+  @@index([examId, status])
+  @@index([pdfDocumentId])
+  @@map("official_answer_keys")
+}
+
+model OfficialAnswerKeyItem {
+  id             String              @id @default(uuid())
+  answerKeyId    String
+  questionNumber Int
+  questionId     String?
+  correctAnswer  String?
+  previousAnswer String?
+  status         AnswerKeyItemStatus @default(ACTIVE)
+  isAnnulled     Boolean             @default(false)
+  justification  String?
+  textEvidence   String?
+  confidence     Float?
+  sourcePage     Int?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  answerKey OfficialAnswerKey @relation(fields: [answerKeyId], references: [id], onDelete: Cascade)
+  question  Question?         @relation(fields: [questionId], references: [id], onDelete: SetNull)
+
+  @@unique([answerKeyId, questionNumber])
+  @@index([answerKeyId, status])
+  @@index([questionId])
+  @@map("official_answer_key_items")
+}

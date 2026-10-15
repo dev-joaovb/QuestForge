@@ -73,6 +73,7 @@ class InMemoryTestPdfRepository implements IPdfDocumentRepository {
       id,
       userId: data.userId,
       examId: data.examId ?? null,
+      documentType: data.documentType ?? 'EXAM',
       originalName: data.originalName,
       mimeType: data.mimeType,
       sizeBytes: data.sizeBytes,
