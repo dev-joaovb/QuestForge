@@ -952,4 +952,360 @@ describe('Interface de Gabaritos Oficiais (src/tests/OfficialAnswerKeysPage.test
       await screen.findByText(/Autenticação necessária para gerenciar Gabaritos Oficiais/i)
     ).toBeInTheDocument();
   });
+
+  it('15. deve desabilitar o botão de publicação e impedir submissão quando houver item com status NEEDS_REVIEW', async () => {
+    let publishRequested = false;
+
+    const draftKeyWithNeedsReview: OfficialAnswerKeyDTO = {
+      ...sampleDraftKey,
+      items: [
+        {
+          ...sampleDraftItem,
+          status: 'NEEDS_REVIEW',
+          correctAnswer: null,
+          isAnnulled: false,
+        },
+      ],
+    };
+
+    globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/auth/me')) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockAuthenticatedUser,
+        } as Response;
+      }
+      if (url.includes(`/current`)) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ answerKey: draftKeyWithNeedsReview }),
+        } as Response;
+      }
+      if (url.includes(`/versions`)) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ versions: [draftKeyWithNeedsReview] }),
+        } as Response;
+      }
+      if (url.includes(`/publish`) && init?.method === 'POST') {
+        publishRequested = true;
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({
+            answerKey: { ...draftKeyWithNeedsReview, status: 'PUBLISHED', isCurrent: true },
+          }),
+        } as Response;
+      }
+      if (url.includes(validKeyId)) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ answerKey: draftKeyWithNeedsReview }),
+        } as Response;
+      }
+      throw new Error(`URL inesperada: ${url}`);
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/answer-keys']}>
+        <AppRoutes />
+      </MemoryRouter>
+    );
+
+    const input = await screen.findByPlaceholderText(/Exemplo: 22222222-2222-4222-8222/i);
+    fireEvent.change(input, { target: { value: validExamId } });
+    fireEvent.click(screen.getByRole('button', { name: /Consultar Prova/i }));
+
+    const publishBtn = await screen.findByRole('button', { name: /Publicar Gabarito/i });
+    expect(publishBtn).toBeDisabled();
+
+    // Tentar clicar no botão desabilitado não deve abrir o modal nem disparar requisição
+    fireEvent.click(publishBtn);
+    expect(screen.queryByRole('heading', { name: /Publicar Gabarito Oficial/i })).not.toBeInTheDocument();
+    expect(publishRequested).toBe(false);
+  });
+
+  it('16. deve desabilitar o botão de publicação e impedir submissão quando houver item ativo sem resposta correta definida', async () => {
+    let publishRequested = false;
+
+    const draftKeyWithMissingAnswer: OfficialAnswerKeyDTO = {
+      ...sampleDraftKey,
+      items: [
+        {
+          ...sampleDraftItem,
+          status: 'ACTIVE',
+          correctAnswer: '',
+          isAnnulled: false,
+        },
+      ],
+    };
+
+    globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/auth/me')) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockAuthenticatedUser,
+        } as Response;
+      }
+      if (url.includes(`/current`)) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ answerKey: draftKeyWithMissingAnswer }),
+        } as Response;
+      }
+      if (url.includes(`/versions`)) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ versions: [draftKeyWithMissingAnswer] }),
+        } as Response;
+      }
+      if (url.includes(`/publish`) && init?.method === 'POST') {
+        publishRequested = true;
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({
+            answerKey: { ...draftKeyWithMissingAnswer, status: 'PUBLISHED', isCurrent: true },
+          }),
+        } as Response;
+      }
+      if (url.includes(validKeyId)) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ answerKey: draftKeyWithMissingAnswer }),
+        } as Response;
+      }
+      throw new Error(`URL inesperada: ${url}`);
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/answer-keys']}>
+        <AppRoutes />
+      </MemoryRouter>
+    );
+
+    const input = await screen.findByPlaceholderText(/Exemplo: 22222222-2222-4222-8222/i);
+    fireEvent.change(input, { target: { value: validExamId } });
+    fireEvent.click(screen.getByRole('button', { name: /Consultar Prova/i }));
+
+    const publishBtn = await screen.findByRole('button', { name: /Publicar Gabarito/i });
+    expect(publishBtn).toBeDisabled();
+
+    fireEvent.click(publishBtn);
+    expect(screen.queryByRole('heading', { name: /Publicar Gabarito Oficial/i })).not.toBeInTheDocument();
+    expect(publishRequested).toBe(false);
+  });
+
+  it('17. deve tratar erro HTTP 422 ao publicar gabarito oficial exibindo mensagem de erro sem fechar modal nem apresentar sucesso', async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/auth/me')) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockAuthenticatedUser,
+        } as Response;
+      }
+      if (url.includes(`/current`)) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ answerKey: sampleDraftKey }),
+        } as Response;
+      }
+      if (url.includes(`/versions`)) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ versions: [sampleDraftKey] }),
+        } as Response;
+      }
+      if (url.includes(`/publish`) && init?.method === 'POST') {
+        return {
+          status: 422,
+          ok: false,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({
+            error: 'ANSWER_KEY_NOT_DRAFT',
+            message: 'Apenas gabaritos em estado DRAFT podem ser publicados.',
+          }),
+        } as Response;
+      }
+      if (url.includes(validKeyId)) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ answerKey: sampleDraftKey }),
+        } as Response;
+      }
+      throw new Error(`URL inesperada: ${url}`);
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/answer-keys']}>
+        <AppRoutes />
+      </MemoryRouter>
+    );
+
+    const input = await screen.findByPlaceholderText(/Exemplo: 22222222-2222-4222-8222/i);
+    fireEvent.change(input, { target: { value: validExamId } });
+    fireEvent.click(screen.getByRole('button', { name: /Consultar Prova/i }));
+
+    const publishBtn = await screen.findByRole('button', { name: /Publicar Gabarito/i });
+    expect(publishBtn).toBeEnabled();
+    fireEvent.click(publishBtn);
+
+    const modalTitle = await screen.findByRole('heading', { name: /Publicar Gabarito Oficial/i });
+    expect(modalTitle).toBeInTheDocument();
+
+    const checkbox = screen.getByRole('checkbox');
+    fireEvent.click(checkbox);
+
+    const confirmBtn = screen.getByRole('button', { name: /Confirmar e Publicar/i });
+    expect(confirmBtn).toBeEnabled();
+    fireEvent.click(confirmBtn);
+
+    // Mensagem de erro da API deve ser exibida
+    expect(
+      await screen.findByText(/Apenas gabaritos em estado DRAFT podem ser publicados/i)
+    ).toBeInTheDocument();
+
+    // Mensagem de sucesso NÃO deve ser exibida
+    expect(screen.queryByText(/publicado com sucesso/i)).not.toBeInTheDocument();
+
+    // O modal deve permanecer aberto
+    expect(screen.getByRole('heading', { name: /Publicar Gabarito Oficial/i })).toBeInTheDocument();
+  });
+
+  it('18. deve tratar indisponibilidade do serviço HTTP 503 ao publicar gabarito oficial exibindo erro e permitindo nova tentativa sem submissões duplicadas', async () => {
+    let publishAttempts = 0;
+
+    globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/auth/me')) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockAuthenticatedUser,
+        } as Response;
+      }
+      if (url.includes(`/current`)) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ answerKey: sampleDraftKey }),
+        } as Response;
+      }
+      if (url.includes(`/versions`)) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ versions: [sampleDraftKey] }),
+        } as Response;
+      }
+      if (url.includes(`/publish`) && init?.method === 'POST') {
+        publishAttempts++;
+        if (publishAttempts === 1) {
+          return {
+            status: 503,
+            ok: false,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            json: async () => ({
+              error: 'ServiceUnavailable',
+              message: 'Não foi possível processar a operação em gabaritos oficiais no momento.',
+            }),
+          } as Response;
+        }
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({
+            answerKey: { ...sampleDraftKey, status: 'PUBLISHED', isCurrent: true },
+          }),
+        } as Response;
+      }
+      if (url.includes(validKeyId)) {
+        return {
+          status: 200,
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({
+            answerKey: {
+              ...sampleDraftKey,
+              status: publishAttempts >= 2 ? 'PUBLISHED' : 'DRAFT',
+              isCurrent: publishAttempts >= 2,
+            },
+          }),
+        } as Response;
+      }
+      throw new Error(`URL inesperada: ${url}`);
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/answer-keys']}>
+        <AppRoutes />
+      </MemoryRouter>
+    );
+
+    const input = await screen.findByPlaceholderText(/Exemplo: 22222222-2222-4222-8222/i);
+    fireEvent.change(input, { target: { value: validExamId } });
+    fireEvent.click(screen.getByRole('button', { name: /Consultar Prova/i }));
+
+    const publishBtn = await screen.findByRole('button', { name: /Publicar Gabarito/i });
+    expect(publishBtn).toBeEnabled();
+    fireEvent.click(publishBtn);
+
+    const checkbox = screen.getByRole('checkbox');
+    fireEvent.click(checkbox);
+
+    const confirmBtn = screen.getByRole('button', { name: /Confirmar e Publicar/i });
+    expect(confirmBtn).toBeEnabled();
+
+    // 1ª tentativa: falha com HTTP 503
+    fireEvent.click(confirmBtn);
+
+    expect(
+      await screen.findByText(/Não foi possível processar a operação em gabaritos oficiais no momento/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/publicado com sucesso/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Publicar Gabarito Oficial/i })).toBeInTheDocument();
+    expect(publishAttempts).toBe(1);
+
+    // O botão deve estar habilitado novamente após a falha para permitir retry
+    expect(confirmBtn).toBeEnabled();
+
+    // 2ª tentativa (retry manual do usuário)
+    fireEvent.click(confirmBtn);
+
+    expect(await screen.findByText(/publicado com sucesso e tornado vigente/i)).toBeInTheDocument();
+    expect(publishAttempts).toBe(2);
+  });
 });
