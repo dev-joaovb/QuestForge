@@ -9,12 +9,17 @@ import {
   createPdfDocumentRouter,
   type PdfDocumentRouterDependencies,
 } from './pdf-document.routes.ts';
+import {
+  createOfficialAnswerKeyRouter,
+  type OfficialAnswerKeyRouterDependencies,
+} from './official-answer-key.routes.ts';
 
 export interface ApiRouterDependencies {
   health?: HealthCheckDependencies;
   auth?: AuthRouterDependencies;
   questions?: QuestionRouterDependencies;
   documents?: PdfDocumentRouterDependencies;
+  officialAnswerKeys?: OfficialAnswerKeyRouterDependencies;
 }
 
 export function createApiRouter(deps?: ApiRouterDependencies): Router {
@@ -36,6 +41,20 @@ export function createApiRouter(deps?: ApiRouterDependencies): Router {
       pdfDocumentService: deps?.documents?.pdfDocumentService,
       aiExtractionService: deps?.documents?.aiExtractionService,
       multipartOptions: deps?.documents?.multipartOptions,
+    })
+  );
+  apiRouter.use(
+    '/official-answer-keys',
+    createOfficialAnswerKeyRouter({
+      authService: deps?.officialAnswerKeys?.authService ?? deps?.auth?.authService,
+      officialAnswerKeyService: deps?.officialAnswerKeys?.officialAnswerKeyService,
+    })
+  );
+  apiRouter.use(
+    '/answer-keys',
+    createOfficialAnswerKeyRouter({
+      authService: deps?.officialAnswerKeys?.authService ?? deps?.auth?.authService,
+      officialAnswerKeyService: deps?.officialAnswerKeys?.officialAnswerKeyService,
     })
   );
 

@@ -78,6 +78,12 @@ export function Navbar() {
                 Banco de Questões
               </Link>
               <Link
+                to="/answer-keys"
+                className="whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
+              >
+                Gabaritos Oficiais
+              </Link>
+              <Link
                 to="/profile"
                 className="whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
               >
@@ -160,6 +166,13 @@ export function Navbar() {
                   className="w-full rounded-md border border-neutral-800 px-4 py-2.5 text-center text-sm font-medium text-neutral-200 hover:bg-neutral-900 focus-visible:outline-2 focus-visible:outline-[#2563EB]"
                 >
                   Banco de Questões
+                </Link>
+                <Link
+                  to="/answer-keys"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full rounded-md border border-neutral-800 px-4 py-2.5 text-center text-sm font-medium text-neutral-200 hover:bg-neutral-900 focus-visible:outline-2 focus-visible:outline-[#2563EB]"
+                >
+                  Gabaritos Oficiais
                 </Link>
                 <Link
                   to="/profile"

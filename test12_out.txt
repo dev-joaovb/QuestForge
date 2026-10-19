@@ -1,0 +1,284 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.3 [39m[90m/app/applet[39m
+
+ [31m❯[39m src/tests/OfficialAnswerKeysPage.test.tsx [2m([22m[2m14 tests[22m[2m | [22m[31m1 failed[39m[2m | [22m[33m13 skipped[39m[2m)[22m[33m 1245[2mms[22m[39m
+   [31m❯[39m Interface de Gabaritos Oficiais (src/tests/OfficialAnswerKeysPage.test.tsx) — Sprint 5.2.6 [2m(14)[22m
+     [2m[90m↓[39m[22m 1. deve renderizar a página inicial com cabeçalho e campo de identificação da prova
+     [2m[90m↓[39m[22m 2. deve validar UUID antes de consultar a prova e exibir mensagem de erro para entrada inválida
+     [2m[90m↓[39m[22m 3. deve carregar dados da prova quando o UUID for válido e exibir estado sem gabarito vigente
+     [2m[90m↓[39m[22m 4. deve criar um novo rascunho com sucesso incluindo cabeçalhos CSRF e credenciais
+     [2m[90m↓[39m[22m 5. deve listar itens do rascunho e permitir adicionar novo item individual
+     [2m[90m↓[39m[22m 6. deve desabilitar/ocultar botões de edição para gabaritos publicados (somente leitura)
+     [2m[90m↓[39m[22m 7. deve publicar gabarito oficial com sucesso após confirmação
+     [2m[90m↓[39m[22m 8. deve tratar conflito de concorrência HTTP 409 ao publicar e fornecer botão para recarregar dados
+     [2m[90m↓[39m[22m 9. deve excluir rascunho com sucesso após confirmação no modal
+     [2m[90m↓[39m[22m 10. deve responder adequadamente a acesso através da rota alias /official-answer-keys
+     [2m[90m↓[39m[22m 11. deve exibir mensagem de acesso restrito com link para login quando usuário estiver desautenticado
+[31m     [31m×[31m 12. deve isolar requisições assíncronas ao trocar o UUID da prova, limpando imediatamente os dados anteriores e ignorando respostas defasadas[39m[33m 1241[2mms[22m[39m
+     [2m[90m↓[39m[22m 13. deve exibir erro retornado pela API diretamente dentro do modal de substituição em lote mantendo o modal aberto
+     [2m[90m↓[39m[22m 14. deve tratar expiração de sessão (HTTP 401) durante operação na página e atualizar para estado desautenticado
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/tests/OfficialAnswerKeysPage.test.tsx[2m > [22mInterface de Gabaritos Oficiais (src/tests/OfficialAnswerKeysPage.test.tsx) — Sprint 5.2.6[2m > [22m12. deve isolar requisições assíncronas ao trocar o UUID da prova, limpando imediatamente os dados anteriores e ignorando respostas defasadas
+[31m[1mTestingLibraryElementError[22m[39m: Unable to find an element with the text: /Gabarito da Prova B/i. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"min-h-screen bg-[#0A0A0A] text-neutral-100 flex flex-col font-sans"[39m
+    [36m>[39m
+      [36m<header[39m
+        [33mclass[39m=[32m"sticky top-0 z-40 border-b border-neutral-800 bg-[#0A0A0A]/95 backdrop-blur-sm"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"[39m
+        [36m>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"text-lg font-bold tracking-tight text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+            [33mdata-discover[39m=[32m"true"[39m
+            [33mhref[39m=[32m"/"[39m
+          [36m>[39m
+            [0mQuestForge[0m
+          [36m</a>[39m
+          [36m<nav[39m
+            [33maria-label[39m=[32m"Navegação principal"[39m
+            [33mclass[39m=[32m"hidden md:flex items-center gap-6 text-sm font-medium text-neutral-400"[39m
+          [36m>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#problema"[39m
+            [36m>[39m
+              [0mO Problema[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#funcionamento"[39m
+            [36m>[39m
+              [0mFuncionamento[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#recursos"[39m
+            [36m>[39m
+              [0mRecursos[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#ia-aplicada"[39m
+            [36m>[39m
+              [0mIA Aplicada[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#simulados"[39m
+            [36m>[39m
+              [0mSimulados[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#desempenho"[39m
+            [36m>[39m
+              [0mDesempenho[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#streak-historico"[39m
+            [36m>[39m
+              [0mConsistência[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#privacidade"[39m
+            [36m>[39m
+              [0mConfiabilidade[0m
+            [36m</a>[39m
+          [36m</nav>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"hidden md:flex items-center gap-3"[39m
+          [36m>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/documents"[39m
+            [36m>[39m
+              [0mDocumentos PDF[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/questions"[39m
+            [36m>[39m
+              [0mBanco de Questões[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/answer-keys"[39m
+            [36m>[39m
+              [0mGabaritos Oficiais[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/profile"[39m
+            [36m>[39m
+              [0mMinha conta ([0m
+              [0mProfessor[0m
+              [0m)[0m
+            [36m</a>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"whitespace-nowrap rounded-md border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors duration-150 hover:bg-neutral-900 hover:text-white disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mSair[0m
+            [36m</button>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex md:hidden"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-controls[39m=[32m"mobile-nav-menu"[39m
+              [33maria-expanded[39m=[32m"false"[39m
+              [33maria-label[39m=[32m"Abrir menu de navegação"[39m
+     ...
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"min-h-screen bg-[#0A0A0A] text-neutral-100 flex flex-col font-sans"[39m
+    [36m>[39m
+      [36m<header[39m
+        [33mclass[39m=[32m"sticky top-0 z-40 border-b border-neutral-800 bg-[#0A0A0A]/95 backdrop-blur-sm"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"[39m
+        [36m>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"text-lg font-bold tracking-tight text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+            [33mdata-discover[39m=[32m"true"[39m
+            [33mhref[39m=[32m"/"[39m
+          [36m>[39m
+            [0mQuestForge[0m
+          [36m</a>[39m
+          [36m<nav[39m
+            [33maria-label[39m=[32m"Navegação principal"[39m
+            [33mclass[39m=[32m"hidden md:flex items-center gap-6 text-sm font-medium text-neutral-400"[39m
+          [36m>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#problema"[39m
+            [36m>[39m
+              [0mO Problema[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#funcionamento"[39m
+            [36m>[39m
+              [0mFuncionamento[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#recursos"[39m
+            [36m>[39m
+              [0mRecursos[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#ia-aplicada"[39m
+            [36m>[39m
+              [0mIA Aplicada[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#simulados"[39m
+            [36m>[39m
+              [0mSimulados[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#desempenho"[39m
+            [36m>[39m
+              [0mDesempenho[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#streak-historico"[39m
+            [36m>[39m
+              [0mConsistência[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"[39m
+              [33mhref[39m=[32m"/#privacidade"[39m
+            [36m>[39m
+              [0mConfiabilidade[0m
+            [36m</a>[39m
+          [36m</nav>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"hidden md:flex items-center gap-3"[39m
+          [36m>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/documents"[39m
+            [36m>[39m
+              [0mDocumentos PDF[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/questions"[39m
+            [36m>[39m
+              [0mBanco de Questões[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/answer-keys"[39m
+            [36m>[39m
+              [0mGabaritos Oficiais[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/profile"[39m
+            [36m>[39m
+              [0mMinha conta ([0m
+              [0mProfessor[0m
+              [0m)[0m
+            [36m</a>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"whitespace-nowrap rounded-md border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors duration-150 hover:bg-neutral-900 hover:text-white disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mSair[0m
+            [36m</button>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex md:hidden"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-controls[39m=[32m"mobile-nav-menu"[39m
+              [33maria-expanded[39m=[32m"false"[39m
+              [33maria-label[39m=[32m"Abrir menu de navegação"[39m
+     ...
+[90m [2m❯[22m waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:[2m163:27[22m[39m
+[90m [2m❯[22m node_modules/@testing-library/dom/dist/query-helpers.js:[2m86:33[22m[39m
+[36m [2m❯[22m src/tests/OfficialAnswerKeysPage.test.tsx:[2m789:25[22m[39m
+    [90m787|[39m
+    [90m788|[39m     // A Prova B responde rapidamente
+    [90m789|[39m     expect(await screen.findByText(/Gabarito da Prova B/i)).toBeInTheD…
+    [90m   |[39m                         [31m^[39m
+    [90m790|[39m
+    [90m791|[39m     // 3. Agora a resposta atrasada da Prova A se resolve
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[33m13 skipped[39m[90m (14)[39m
+[2m   Start at [22m 14:22:31
+[2m   Duration [22m 3.21s[2m (tests 41%, environment 31%, transform 16%, setup 7%, import 6%)[22m
+

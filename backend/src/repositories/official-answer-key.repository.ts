@@ -36,6 +36,109 @@ function assertUniqueQuestionNumbers(
   }
 }
 
+/**
+ * Verifica se um erro lançado pelo Prisma é de violação de restrição única (P2002).
+ */
+function isPrismaUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  return (error as { code?: unknown }).code === 'P2002';
+}
+
+/**
+ * Extrai o alvo da restrição única do erro do Prisma para mapeamento de domínio.
+ */
+function getPrismaConstraintTarget(error: unknown): string {
+  if (!error || typeof error !== 'object') return '';
+  const candidate = error as {
+    meta?: {
+      target?: unknown;
+      constraint?: unknown;
+      modelName?: unknown;
+    };
+    message?: string;
+  };
+  const meta = candidate.meta;
+  if (!meta) return candidate.message ?? '';
+
+  if (Array.isArray(meta.target)) {
+    return meta.target.join(',');
+  }
+  if (typeof meta.target === 'string') {
+    return meta.target;
+  }
+  if (typeof meta.constraint === 'string') {
+    return meta.constraint;
+  }
+  return candidate.message ?? '';
+}
+
+/**
+ * Converte de forma controlada violações de unicidade do PostgreSQL/Prisma
+ * em erros de domínio padronizados (OfficialAnswerKeyError), evitando expor
+ * detalhes de conexão, SQL ou dados sensíveis ao cliente.
+ */
+function handlePrismaUniqueError(
+  error: unknown,
+  context: 'publish' | 'create_draft' | 'add_item'
+): never {
+  if (isPrismaUniqueConstraintError(error)) {
+    const target = getPrismaConstraintTarget(error);
+
+    // Conflito do índice parcial único: official_answer_keys_exam_current_unique (WHERE "isCurrent" = true)
+    if (
+      target.includes('official_answer_keys_exam_current_unique') ||
+      target.includes('isCurrent') ||
+      (context === 'publish' && target.includes('examId') && !target.includes('version'))
+    ) {
+      throw new OfficialAnswerKeyError(
+        'ANSWER_KEY_PUBLISH_CONFLICT',
+        'Conflito de publicação concorrente: outra versão deste gabarito oficial foi ativada simultaneamente.',
+        409,
+        { cause: error }
+      );
+    }
+
+    // Duplicidade de versão: @@unique([examId, type, version])
+    if (
+      target.includes('version') ||
+      target.includes('official_answer_keys_examId_type_version_key') ||
+      target.includes('examId,type,version')
+    ) {
+      throw new OfficialAnswerKeyError(
+        'ANSWER_KEY_DUPLICATE_VERSION',
+        'Já existe um gabarito oficial com esta versão para esta prova.',
+        409,
+        { cause: error }
+      );
+    }
+
+    // Duplicidade de item: @@unique([answerKeyId, questionNumber])
+    if (
+      target.includes('questionNumber') ||
+      target.includes('official_answer_key_items_answerKeyId_questionNumber_key') ||
+      target.includes('answerKeyId,questionNumber')
+    ) {
+      throw new OfficialAnswerKeyError(
+        'ANSWER_KEY_DUPLICATE_ITEM',
+        'Já existe um item com este número de questão neste gabarito oficial.',
+        context === 'add_item' ? 422 : 409,
+        { cause: error }
+      );
+    }
+
+    if (context === 'publish') {
+      throw new OfficialAnswerKeyError(
+        'ANSWER_KEY_PUBLISH_CONFLICT',
+        'Conflito de unicidade ao publicar o gabarito oficial.',
+        409,
+        { cause: error }
+      );
+    }
+  }
+
+  throw error;
+}
+
 export interface IOfficialAnswerKeyRepository {
   createDraft(data: CreateOfficialAnswerKeyDraftInput): Promise<OfficialAnswerKeyWithItems>;
   findById(
@@ -120,41 +223,48 @@ export class PrismaOfficialAnswerKeyRepository implements IOfficialAnswerKeyRepo
       assertUniqueQuestionNumbers(data.items);
     }
 
-    return prisma.officialAnswerKey.create({
-      data: {
-        userId: data.userId,
-        examId: data.examId,
-        pdfDocumentId: data.pdfDocumentId ?? null,
-        type: data.type ?? 'PRELIMINARY',
-        status: 'DRAFT',
-        version: data.version ?? 1,
-        isCurrent: false,
-        publicationDate: data.publicationDate ?? null,
-        notes: data.notes ?? null,
-        items:
-          data.items && data.items.length > 0
-            ? {
-                create: data.items.map((item) => ({
-                  questionNumber: item.questionNumber,
-                  questionId: item.questionId ?? null,
-                  correctAnswer: item.correctAnswer ?? null,
-                  previousAnswer: item.previousAnswer ?? null,
-                  status: item.status ?? 'ACTIVE',
-                  isAnnulled: item.isAnnulled ?? false,
-                  justification: item.justification ?? null,
-                  textEvidence: item.textEvidence ?? null,
-                  confidence: item.confidence ?? null,
-                  sourcePage: item.sourcePage ?? null,
-                })),
-              }
-            : undefined,
-      },
-      include: {
-        items: {
-          orderBy: { questionNumber: 'asc' },
+    try {
+      return await prisma.officialAnswerKey.create({
+        data: {
+          userId: data.userId,
+          examId: data.examId,
+          pdfDocumentId: data.pdfDocumentId ?? null,
+          type: data.type ?? 'PRELIMINARY',
+          status: 'DRAFT',
+          version: data.version ?? 1,
+          isCurrent: false,
+          publicationDate: data.publicationDate ?? null,
+          notes: data.notes ?? null,
+          items:
+            data.items && data.items.length > 0
+              ? {
+                  create: data.items.map((item) => ({
+                    questionNumber: item.questionNumber,
+                    questionId: item.questionId ?? null,
+                    correctAnswer: item.correctAnswer ?? null,
+                    previousAnswer: item.previousAnswer ?? null,
+                    status: item.status ?? 'ACTIVE',
+                    isAnnulled: item.isAnnulled ?? false,
+                    justification: item.justification ?? null,
+                    textEvidence: item.textEvidence ?? null,
+                    confidence: item.confidence ?? null,
+                    sourcePage: item.sourcePage ?? null,
+                  })),
+                }
+              : undefined,
         },
-      },
-    });
+        include: {
+          items: {
+            orderBy: { questionNumber: 'asc' },
+          },
+        },
+      });
+    } catch (error) {
+      if (error instanceof OfficialAnswerKeyError) {
+        throw error;
+      }
+      handlePrismaUniqueError(error, 'create_draft');
+    }
   }
 
   /**
@@ -648,83 +758,90 @@ export class PrismaOfficialAnswerKeyRepository implements IOfficialAnswerKeyRepo
   ): Promise<OfficialAnswerKeyItem> {
     const prisma = this.prismaGetter();
 
-    return prisma.$transaction(async (tx) => {
-      const parentLock = await tx.officialAnswerKey.updateMany({
-        where: {
-          id: answerKeyId,
-          userId,
-          status: 'DRAFT',
-        },
-        data: {
-          updatedAt: new Date(),
-        },
-      });
-
-      if (parentLock.count === 0) {
-        const parent = await tx.officialAnswerKey.findFirst({
-          where: { id: answerKeyId, userId },
-          select: { id: true, status: true },
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const parentLock = await tx.officialAnswerKey.updateMany({
+          where: {
+            id: answerKeyId,
+            userId,
+            status: 'DRAFT',
+          },
+          data: {
+            updatedAt: new Date(),
+          },
         });
 
-        if (!parent) {
+        if (parentLock.count === 0) {
+          const parent = await tx.officialAnswerKey.findFirst({
+            where: { id: answerKeyId, userId },
+            select: { id: true, status: true },
+          });
+
+          if (!parent) {
+            throw new OfficialAnswerKeyError(
+              'ANSWER_KEY_NOT_FOUND',
+              'Gabarito oficial não encontrado.',
+              404
+            );
+          }
+
           throw new OfficialAnswerKeyError(
-            'ANSWER_KEY_NOT_FOUND',
-            'Gabarito oficial não encontrado.',
-            404
+            'ANSWER_KEY_NOT_DRAFT',
+            `Apenas gabaritos em estado DRAFT podem receber novos itens. Status atual: ${parent.status}`,
+            422
           );
         }
 
-        throw new OfficialAnswerKeyError(
-          'ANSWER_KEY_NOT_DRAFT',
-          `Apenas gabaritos em estado DRAFT podem receber novos itens. Status atual: ${parent.status}`,
-          422
-        );
-      }
+        const existingItem = await tx.officialAnswerKeyItem.findFirst({
+          where: {
+            answerKeyId,
+            questionNumber: item.questionNumber,
+          },
+        });
 
-      const existingItem = await tx.officialAnswerKeyItem.findFirst({
-        where: {
-          answerKeyId,
-          questionNumber: item.questionNumber,
-        },
+        if (existingItem) {
+          throw new OfficialAnswerKeyError(
+            'ANSWER_KEY_DUPLICATE_ITEM',
+            `Já existe um item com o número de questão ${item.questionNumber} neste gabarito oficial.`,
+            422
+          );
+        }
+
+        return tx.officialAnswerKeyItem.create({
+          data: {
+            answerKeyId,
+            questionNumber: item.questionNumber,
+            questionId: item.questionId ?? null,
+            correctAnswer: item.correctAnswer ?? null,
+            previousAnswer: item.previousAnswer ?? null,
+            status: item.status ?? 'ACTIVE',
+            isAnnulled: item.isAnnulled ?? false,
+            justification: item.justification ?? null,
+            textEvidence: item.textEvidence ?? null,
+            confidence: item.confidence ?? null,
+            sourcePage: item.sourcePage ?? null,
+          },
+        });
       });
-
-      if (existingItem) {
-        throw new OfficialAnswerKeyError(
-          'ANSWER_KEY_DUPLICATE_ITEM',
-          `Já existe um item com o número de questão ${item.questionNumber} neste gabarito oficial.`,
-          422
-        );
+    } catch (error) {
+      if (error instanceof OfficialAnswerKeyError) {
+        throw error;
       }
-
-      return tx.officialAnswerKeyItem.create({
-        data: {
-          answerKeyId,
-          questionNumber: item.questionNumber,
-          questionId: item.questionId ?? null,
-          correctAnswer: item.correctAnswer ?? null,
-          previousAnswer: item.previousAnswer ?? null,
-          status: item.status ?? 'ACTIVE',
-          isAnnulled: item.isAnnulled ?? false,
-          justification: item.justification ?? null,
-          textEvidence: item.textEvidence ?? null,
-          confidence: item.confidence ?? null,
-          sourcePage: item.sourcePage ?? null,
-        },
-      });
-    });
+      handlePrismaUniqueError(error, 'add_item');
+    }
   }
 
   /**
    * Publica atomicamente um gabarito oficial em estado DRAFT, ativando sua vigência (`isCurrent = true`).
    *
-   * Mecanismo de concorrência e integridade transacional:
-   * 1. Adquire bloqueio exclusivo e valida condicionalmente que o gabarito pertence ao usuário e
-   *    está em estado DRAFT (`updateMany({ where: { id, userId, status: 'DRAFT' } })`).
-   * 2. Desativa a vigência de qualquer versão vigente anterior da mesma prova (`isCurrent = false`,
-   *    `status = 'SUPERSEDED'`), respeitando o índice parcial único `official_answer_keys_exam_current_unique`.
-   * 3. Ativa o gabarito como `PUBLISHED`, `isCurrent = true` e atualiza a data de publicação.
-   * 4. Executa todas as mutações na mesma transação PostgreSQL (`$transaction`), garantindo que falhas
-   *    ou concorrência resultem em rollback completo sem inconsistência de estado.
+   * Ordem de execução e garantias de concorrência (Sprint 5.2.4-Fix):
+   * 1. Adquire bloqueio exclusivo condicional sobre o pai (`updateMany({ id, userId, status: 'DRAFT' })`).
+   * 2. Releitura de todos os itens do gabarito exclusivamente através do cliente transacional `tx`.
+   * 3. Validação final rigorosa dos itens relidos (itens > 0, sem NEEDS_REVIEW, resposta obrigatória
+   *    para itens ativos e coerência estrita de anulação). Em caso de violação, aborta e faz rollback.
+   * 4. Desativa a versão vigente anterior da mesma prova (`isCurrent = false`, `status = 'SUPERSEDED'`).
+   * 5. Ativa a nova versão como publicada e vigente (`status = 'PUBLISHED'`, `isCurrent = true`).
+   * 6. Converte conflitos de concorrência ou unicidade do PostgreSQL/Prisma (P2002) em erros de domínio (409).
    */
   async publishDraft(
     id: string,
@@ -733,25 +850,47 @@ export class PrismaOfficialAnswerKeyRepository implements IOfficialAnswerKeyRepo
   ): Promise<OfficialAnswerKeyWithItems> {
     const prisma = this.prismaGetter();
 
-    return prisma.$transaction(async (tx) => {
-      const parentLock = await tx.officialAnswerKey.updateMany({
-        where: {
-          id,
-          userId,
-          status: 'DRAFT',
-        },
-        data: {
-          updatedAt: new Date(),
-        },
-      });
-
-      if (parentLock.count === 0) {
-        const existing = await tx.officialAnswerKey.findFirst({
-          where: { id, userId },
-          select: { id: true, status: true },
+    try {
+      return await prisma.$transaction(async (tx) => {
+        // 1. Adquire bloqueio condicional exclusivo no registro pai
+        const parentLock = await tx.officialAnswerKey.updateMany({
+          where: {
+            id,
+            userId,
+            status: 'DRAFT',
+          },
+          data: {
+            updatedAt: new Date(),
+          },
         });
 
-        if (!existing) {
+        if (parentLock.count === 0) {
+          const existing = await tx.officialAnswerKey.findFirst({
+            where: { id, userId },
+            select: { id: true, status: true },
+          });
+
+          if (!existing) {
+            throw new OfficialAnswerKeyError(
+              'ANSWER_KEY_NOT_FOUND',
+              'Gabarito oficial não encontrado.',
+              404
+            );
+          }
+
+          throw new OfficialAnswerKeyError(
+            'ANSWER_KEY_NOT_DRAFT',
+            `Apenas gabaritos em estado DRAFT podem ser publicados. Status atual: ${existing.status}`,
+            422
+          );
+        }
+
+        const targetDraft = await tx.officialAnswerKey.findFirst({
+          where: { id, userId },
+          select: { id: true, examId: true },
+        });
+
+        if (!targetDraft) {
           throw new OfficialAnswerKeyError(
             'ANSWER_KEY_NOT_FOUND',
             'Gabarito oficial não encontrado.',
@@ -759,60 +898,98 @@ export class PrismaOfficialAnswerKeyRepository implements IOfficialAnswerKeyRepo
           );
         }
 
-        throw new OfficialAnswerKeyError(
-          'ANSWER_KEY_NOT_DRAFT',
-          `Apenas gabaritos em estado DRAFT podem ser publicados. Status atual: ${existing.status}`,
-          422
-        );
-      }
+        // 2. Releitura dos itens usando exclusivamente o cliente transacional tx após o lock
+        const currentItems = await tx.officialAnswerKeyItem.findMany({
+          where: { answerKeyId: id },
+          orderBy: { questionNumber: 'asc' },
+        });
 
-      const targetDraft = await tx.officialAnswerKey.findFirst({
-        where: { id, userId },
-        select: { id: true, examId: true },
-      });
+        // 3. Validação transacional do estado persistido mais recente antes de qualquer alteração
+        if (!currentItems || currentItems.length === 0) {
+          throw new OfficialAnswerKeyError(
+            'ANSWER_KEY_INVALID_DATA',
+            'Não é possível publicar um gabarito oficial sem itens cadastrados.',
+            400
+          );
+        }
 
-      if (!targetDraft) {
-        throw new OfficialAnswerKeyError(
-          'ANSWER_KEY_NOT_FOUND',
-          'Gabarito oficial não encontrado.',
-          404
-        );
-      }
+        for (const item of currentItems) {
+          if (item.status === 'NEEDS_REVIEW') {
+            throw new OfficialAnswerKeyError(
+              'ANSWER_KEY_INVALID_DATA',
+              `Não é possível publicar o gabarito com itens pendentes de revisão humana (questão ${item.questionNumber}).`,
+              400
+            );
+          }
 
-      // Desativa versão vigente anterior da mesma prova para respeitar o índice único parcial
-      await tx.officialAnswerKey.updateMany({
-        where: {
-          examId: targetDraft.examId,
-          isCurrent: true,
-        },
-        data: {
-          isCurrent: false,
-          status: 'SUPERSEDED',
-          updatedAt: new Date(),
-        },
-      });
+          if (!item.isAnnulled && item.status !== 'ANNULLED') {
+            if (!item.correctAnswer || item.correctAnswer.trim() === '') {
+              throw new OfficialAnswerKeyError(
+                'ANSWER_KEY_INVALID_DATA',
+                `Item da questão ${item.questionNumber} não possui resposta correta definida.`,
+                400
+              );
+            }
+          }
 
-      // Ativa a nova versão como publicada e vigente
-      await tx.officialAnswerKey.update({
-        where: { id },
-        data: {
-          status: 'PUBLISHED',
-          isCurrent: true,
-          publicationDate: publicationDate ?? new Date(),
-          updatedAt: new Date(),
-        },
-      });
+          if (item.status === 'ANNULLED' && !item.isAnnulled) {
+            throw new OfficialAnswerKeyError(
+              'ANSWER_KEY_INVALID_DATA',
+              `Item da questão ${item.questionNumber} possui status ANNULLED mas isAnnulled false.`,
+              400
+            );
+          }
 
-      const published = await tx.officialAnswerKey.findFirst({
-        where: { id, userId },
-        include: {
-          items: {
-            orderBy: { questionNumber: 'asc' },
+          if (item.isAnnulled && item.status !== 'ANNULLED') {
+            throw new OfficialAnswerKeyError(
+              'ANSWER_KEY_INVALID_DATA',
+              `Item da questão ${item.questionNumber} possui isAnnulled true mas status não é ANNULLED.`,
+              400
+            );
+          }
+        }
+
+        // 4. Desativa versão vigente anterior da mesma prova para respeitar o índice único parcial
+        await tx.officialAnswerKey.updateMany({
+          where: {
+            examId: targetDraft.examId,
+            isCurrent: true,
           },
-        },
-      });
+          data: {
+            isCurrent: false,
+            status: 'SUPERSEDED',
+            updatedAt: new Date(),
+          },
+        });
 
-      return published!;
-    });
+        // 5. Ativa a nova versão como publicada e vigente
+        await tx.officialAnswerKey.update({
+          where: { id },
+          data: {
+            status: 'PUBLISHED',
+            isCurrent: true,
+            publicationDate: publicationDate ?? new Date(),
+            updatedAt: new Date(),
+          },
+        });
+
+        // 6. Retorna registro publicado com os itens transacionalmente validados
+        const published = await tx.officialAnswerKey.findFirst({
+          where: { id, userId },
+          include: {
+            items: {
+              orderBy: { questionNumber: 'asc' },
+            },
+          },
+        });
+
+        return published!;
+      });
+    } catch (error) {
+      if (error instanceof OfficialAnswerKeyError) {
+        throw error;
+      }
+      handlePrismaUniqueError(error, 'publish');
+    }
   }
 }

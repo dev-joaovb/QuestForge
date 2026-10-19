@@ -14,6 +14,7 @@ import { QuestionsListPage } from './pages/QuestionsListPage.tsx';
 import { QuestionFormPage } from './pages/QuestionFormPage.tsx';
 import { QuestionDetailPage } from './pages/QuestionDetailPage.tsx';
 import { DocumentsPage } from './pages/DocumentsPage.tsx';
+import { OfficialAnswerKeysPage } from './pages/OfficialAnswerKeysPage.tsx';
 
 export function AppRoutes() {
   return (
@@ -29,6 +30,8 @@ export function AppRoutes() {
         <Route path="/questions/:id" element={<QuestionDetailPage />} />
         <Route path="/questions/:id/edit" element={<QuestionFormPage mode="edit" />} />
         <Route path="/documents" element={<DocumentsPage />} />
+        <Route path="/answer-keys" element={<OfficialAnswerKeysPage />} />
+        <Route path="/official-answer-keys" element={<OfficialAnswerKeysPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthProvider>

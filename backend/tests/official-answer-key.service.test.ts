@@ -863,6 +863,54 @@ describe('OfficialAnswerKeyService — Camada de Serviços de Gabaritos Oficiais
       // Confirma que não houve chamada a nenhum método de escrita em Question
       expect(repository.publishDraft).toHaveBeenCalled();
     });
+
+    it('deve propagar erro de conflito de concorrência (ANSWER_KEY_PUBLISH_CONFLICT, 409) do repositório', async () => {
+      vi.mocked(repository.findByIdWithItems).mockResolvedValueOnce({
+        ...baseAnswerKey,
+        items: baseItems,
+      });
+      vi.mocked(repository.publishDraft).mockRejectedValueOnce(
+        new OfficialAnswerKeyError(
+          'ANSWER_KEY_PUBLISH_CONFLICT',
+          'Conflito de publicação concorrente: outra versão deste gabarito oficial foi ativada simultaneamente.',
+          409
+        )
+      );
+
+      try {
+        await service.publishAnswerKey(actorUserId, validKeyId);
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(OfficialAnswerKeyError);
+        expect((err as OfficialAnswerKeyError).code).toBe('ANSWER_KEY_PUBLISH_CONFLICT');
+        expect((err as OfficialAnswerKeyError).statusCode).toBe(409);
+        expect((err as OfficialAnswerKeyError).message).toContain('Conflito de publicação concorrente');
+      }
+    });
+
+    it('deve propagar erro se a releitura transacional pós-bloqueio no repositório rejeitar itens modificados por corrida', async () => {
+      vi.mocked(repository.findByIdWithItems).mockResolvedValueOnce({
+        ...baseAnswerKey,
+        items: baseItems,
+      });
+      vi.mocked(repository.publishDraft).mockRejectedValueOnce(
+        new OfficialAnswerKeyError(
+          'ANSWER_KEY_INVALID_DATA',
+          'Não é possível publicar o gabarito com itens pendentes de revisão humana (questão 1).',
+          400
+        )
+      );
+
+      try {
+        await service.publishAnswerKey(actorUserId, validKeyId);
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(OfficialAnswerKeyError);
+        expect((err as OfficialAnswerKeyError).code).toBe('ANSWER_KEY_INVALID_DATA');
+        expect((err as OfficialAnswerKeyError).statusCode).toBe(400);
+        expect((err as OfficialAnswerKeyError).message).toContain('pendentes de revisão humana');
+      }
+    });
   });
 
   describe('12. Proteção do Banco de Questões e Ausência de Efeitos Colaterais', () => {

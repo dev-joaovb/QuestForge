@@ -187,3 +187,106 @@ export interface ListPdfDocumentsParams {
   limit?: number;
   status?: DocumentProcessingStatus | '';
 }
+
+// ============================================================================
+// Tipos para Gabaritos Oficiais (Sprint 5)
+// ============================================================================
+
+export type OfficialAnswerKeyType = 'PRELIMINARY' | 'FINAL' | 'RECTIFIED';
+export type OfficialAnswerKeyStatus = 'DRAFT' | 'PUBLISHED' | 'SUPERSEDED' | 'ARCHIVED';
+export type OfficialAnswerKeyItemStatus = 'ACTIVE' | 'ANNULLED' | 'CHANGED' | 'NEEDS_REVIEW';
+
+export interface OfficialAnswerKeyItemDTO {
+  id: string;
+  answerKeyId: string;
+  questionNumber: number;
+  questionId: string | null;
+  correctAnswer: string | null;
+  previousAnswer: string | null;
+  status: OfficialAnswerKeyItemStatus;
+  isAnnulled: boolean;
+  justification: string | null;
+  textEvidence: string | null;
+  confidence: number | null;
+  sourcePage: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OfficialAnswerKeyDTO {
+  id: string;
+  userId: string;
+  examId: string;
+  pdfDocumentId: string | null;
+  type: OfficialAnswerKeyType;
+  status: OfficialAnswerKeyStatus;
+  version: number;
+  isCurrent: boolean;
+  publicationDate: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items?: OfficialAnswerKeyItemDTO[];
+}
+
+export interface CreateOfficialAnswerKeyItemPayload {
+  questionNumber: number;
+  questionId?: string | null;
+  correctAnswer?: string | null;
+  previousAnswer?: string | null;
+  status?: OfficialAnswerKeyItemStatus;
+  isAnnulled?: boolean;
+  justification?: string | null;
+  textEvidence?: string | null;
+  confidence?: number | null;
+  sourcePage?: number | null;
+}
+
+export interface CreateOfficialAnswerKeyDraftPayload {
+  examId: string;
+  pdfDocumentId?: string | null;
+  type?: OfficialAnswerKeyType;
+  version?: number;
+  notes?: string | null;
+  publicationDate?: string | null;
+  items?: CreateOfficialAnswerKeyItemPayload[];
+}
+
+export interface UpdateOfficialAnswerKeyDraftPayload {
+  type?: OfficialAnswerKeyType;
+  version?: number;
+  notes?: string | null;
+  publicationDate?: string | null;
+  pdfDocumentId?: string | null;
+  items?: CreateOfficialAnswerKeyItemPayload[];
+}
+
+export interface UpdateOfficialAnswerKeyItemPayload {
+  questionId?: string | null;
+  correctAnswer?: string | null;
+  previousAnswer?: string | null;
+  status?: OfficialAnswerKeyItemStatus;
+  isAnnulled?: boolean;
+  justification?: string | null;
+  textEvidence?: string | null;
+  confidence?: number | null;
+  sourcePage?: number | null;
+}
+
+export interface ReplaceOfficialAnswerKeyItemsPayload {
+  items: CreateOfficialAnswerKeyItemPayload[];
+}
+
+export interface PublishOfficialAnswerKeyPayload {
+  publicationDate?: string | null;
+  syncQuestionAnswers?: boolean;
+  confirmAllReviewed?: boolean;
+}
+
+export interface ListAnswerKeyVersionsParams {
+  type?: OfficialAnswerKeyType | '';
+}
+
+export interface ListAnswerKeyItemsParams {
+  status?: OfficialAnswerKeyItemStatus | '';
+}

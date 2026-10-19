@@ -1,16 +1,26 @@
 import type {
   AuthSessionResponse,
+  CreateOfficialAnswerKeyDraftPayload,
+  CreateOfficialAnswerKeyItemPayload,
   CreateOrUpdateQuestionPayload,
   HealthApiResponse,
+  ListAnswerKeyItemsParams,
+  ListAnswerKeyVersionsParams,
   ListPdfDocumentsParams,
   ListQuestionsParams,
   LoginRequestPayload,
+  OfficialAnswerKeyDTO,
+  OfficialAnswerKeyItemDTO,
   PaginatedPdfDocumentsResponse,
   PaginatedQuestionsResponse,
   PdfDocumentDTO,
+  PublishOfficialAnswerKeyPayload,
   QuestionOwnerDetailDTO,
   QuestionResponseDTO,
   RegisterRequestPayload,
+  ReplaceOfficialAnswerKeyItemsPayload,
+  UpdateOfficialAnswerKeyDraftPayload,
+  UpdateOfficialAnswerKeyItemPayload,
 } from '../types/index.ts';
 
 export const CSRF_HEADER_NAME = 'X-Requested-With';
@@ -646,4 +656,519 @@ export async function deletePdfDocument(id: string): Promise<{ message: string }
         ? parsed.message
         : 'Documento PDF excluído com sucesso.',
   };
+}
+
+// ============================================================================
+// Métodos de Gabaritos Oficiais (/api/official-answer-keys e /api/answer-keys)
+// ============================================================================
+
+function isValidOfficialAnswerKeyDTO(payload: unknown): payload is OfficialAnswerKeyDTO {
+  if (!payload || typeof payload !== 'object') return false;
+  const k = payload as Record<string, unknown>;
+  return (
+    typeof k.id === 'string' &&
+    typeof k.userId === 'string' &&
+    typeof k.examId === 'string' &&
+    typeof k.type === 'string' &&
+    typeof k.status === 'string' &&
+    typeof k.version === 'number' &&
+    typeof k.isCurrent === 'boolean'
+  );
+}
+
+function isValidOfficialAnswerKeyItemDTO(payload: unknown): payload is OfficialAnswerKeyItemDTO {
+  if (!payload || typeof payload !== 'object') return false;
+  const item = payload as Record<string, unknown>;
+  return (
+    typeof item.id === 'string' &&
+    typeof item.answerKeyId === 'string' &&
+    typeof item.questionNumber === 'number' &&
+    typeof item.status === 'string' &&
+    typeof item.isAnnulled === 'boolean'
+  );
+}
+
+/**
+ * Cria um novo rascunho de gabarito oficial em estado DRAFT.
+ * POST /api/official-answer-keys
+ */
+export async function createOfficialAnswerKeyDraft(
+  payload: CreateOfficialAnswerKeyDraftPayload
+): Promise<OfficialAnswerKeyDTO> {
+  const response = await fetch('/api/official-answer-keys', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível criar o rascunho de gabarito oficial.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidOfficialAnswerKeyDTO(parsed.answerKey)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_ANSWER_KEY_PAYLOAD',
+      'Resposta inesperada do servidor ao criar rascunho de gabarito oficial.'
+    );
+  }
+
+  return parsed.answerKey;
+}
+
+/**
+ * Consulta um gabarito oficial por ID.
+ * GET /api/official-answer-keys/:id
+ */
+export async function fetchOfficialAnswerKeyById(
+  id: string,
+  options?: { includeItems?: boolean; signal?: AbortSignal }
+): Promise<OfficialAnswerKeyDTO> {
+  const encodedId = encodeURIComponent(id.trim());
+  const query = options?.includeItems ? '?includeItems=true' : '';
+  const response = await fetch(`/api/official-answer-keys/${encodedId}${query}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível carregar o gabarito oficial.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidOfficialAnswerKeyDTO(parsed.answerKey)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_ANSWER_KEY_PAYLOAD',
+      'Formato inválido retornado ao consultar o gabarito oficial.'
+    );
+  }
+
+  return parsed.answerKey;
+}
+
+/**
+ * Consulta o gabarito oficial vigente de uma prova específica.
+ * GET /api/official-answer-keys/exams/:examId/current
+ */
+export async function fetchCurrentOfficialAnswerKeyByExamId(
+  examId: string,
+  options?: { includeItems?: boolean; signal?: AbortSignal }
+): Promise<OfficialAnswerKeyDTO | null> {
+  const encodedExamId = encodeURIComponent(examId.trim());
+  const query = options?.includeItems ? '?includeItems=true' : '';
+  const response = await fetch(
+    `/api/official-answer-keys/exams/${encodedExamId}/current${query}`,
+    {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+      signal: options?.signal,
+    }
+  );
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível carregar o gabarito vigente da prova.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (parsed.answerKey === null) {
+    return null;
+  }
+
+  if (!isValidOfficialAnswerKeyDTO(parsed.answerKey)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_ANSWER_KEY_PAYLOAD',
+      'Formato inválido retornado ao consultar o gabarito vigente da prova.'
+    );
+  }
+
+  return parsed.answerKey;
+}
+
+/**
+ * Consulta o histórico de versões de gabaritos oficiais de uma prova.
+ * GET /api/official-answer-keys/exams/:examId/versions
+ */
+export async function fetchOfficialAnswerKeyVersions(
+  examId: string,
+  params?: ListAnswerKeyVersionsParams,
+  signal?: AbortSignal
+): Promise<OfficialAnswerKeyDTO[]> {
+  const encodedExamId = encodeURIComponent(examId.trim());
+  const searchParams = new URLSearchParams();
+  if (params?.type) searchParams.set('type', params.type);
+
+  const queryString = searchParams.toString();
+  const url = queryString
+    ? `/api/official-answer-keys/exams/${encodedExamId}/versions?${queryString}`
+    : `/api/official-answer-keys/exams/${encodedExamId}/versions`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível carregar o histórico de versões do gabarito oficial.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !Array.isArray(parsed.versions)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_ANSWER_KEY_VERSIONS_PAYLOAD',
+      'Formato inválido retornado pelo histórico de versões.'
+    );
+  }
+
+  return parsed.versions as OfficialAnswerKeyDTO[];
+}
+
+/**
+ * Consulta os itens de um gabarito oficial com filtros opcionais.
+ * GET /api/official-answer-keys/:id/items
+ */
+export async function fetchOfficialAnswerKeyItems(
+  id: string,
+  params?: ListAnswerKeyItemsParams,
+  signal?: AbortSignal
+): Promise<OfficialAnswerKeyItemDTO[]> {
+  const encodedId = encodeURIComponent(id.trim());
+  const searchParams = new URLSearchParams();
+  if (params?.status) searchParams.set('status', params.status);
+
+  const queryString = searchParams.toString();
+  const url = queryString
+    ? `/api/official-answer-keys/${encodedId}/items?${queryString}`
+    : `/api/official-answer-keys/${encodedId}/items`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível carregar os itens do gabarito oficial.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !Array.isArray(parsed.items)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_ANSWER_KEY_ITEMS_PAYLOAD',
+      'Formato inválido retornado ao listar itens do gabarito oficial.'
+    );
+  }
+
+  return parsed.items as OfficialAnswerKeyItemDTO[];
+}
+
+/**
+ * Consulta um item específico por número de questão.
+ * GET /api/official-answer-keys/:id/items/:questionNumber
+ */
+export async function fetchOfficialAnswerKeyItemByQuestion(
+  id: string,
+  questionNumber: number,
+  signal?: AbortSignal
+): Promise<OfficialAnswerKeyItemDTO> {
+  const encodedId = encodeURIComponent(id.trim());
+  const response = await fetch(
+    `/api/official-answer-keys/${encodedId}/items/${questionNumber}`,
+    {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+      signal,
+    }
+  );
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      `Não foi possível carregar o item da questão ${questionNumber}.`
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidOfficialAnswerKeyItemDTO(parsed.item)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_ANSWER_KEY_ITEM_PAYLOAD',
+      'Formato inválido retornado ao consultar o item do gabarito oficial.'
+    );
+  }
+
+  return parsed.item;
+}
+
+/**
+ * Atualiza metadados e/ou itens de um rascunho de gabarito oficial.
+ * PATCH /api/official-answer-keys/:id
+ */
+export async function updateOfficialAnswerKeyDraft(
+  id: string,
+  payload: UpdateOfficialAnswerKeyDraftPayload
+): Promise<OfficialAnswerKeyDTO> {
+  const encodedId = encodeURIComponent(id.trim());
+  const response = await fetch(`/api/official-answer-keys/${encodedId}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível atualizar o rascunho de gabarito oficial.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidOfficialAnswerKeyDTO(parsed.answerKey)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_ANSWER_KEY_PAYLOAD',
+      'Resposta inesperada do servidor ao atualizar rascunho de gabarito oficial.'
+    );
+  }
+
+  return parsed.answerKey;
+}
+
+/**
+ * Adiciona um novo item individual a um rascunho de gabarito oficial.
+ * POST /api/official-answer-keys/:id/items
+ */
+export async function addOfficialAnswerKeyItem(
+  id: string,
+  payload: CreateOfficialAnswerKeyItemPayload
+): Promise<OfficialAnswerKeyItemDTO> {
+  const encodedId = encodeURIComponent(id.trim());
+  const response = await fetch(`/api/official-answer-keys/${encodedId}/items`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível adicionar o item ao rascunho de gabarito oficial.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidOfficialAnswerKeyItemDTO(parsed.item)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_ANSWER_KEY_ITEM_PAYLOAD',
+      'Resposta inesperada do servidor ao adicionar item ao gabarito oficial.'
+    );
+  }
+
+  return parsed.item;
+}
+
+/**
+ * Atualiza um item individual pertencente a um rascunho de gabarito oficial.
+ * PATCH /api/official-answer-keys/:id/items/:questionNumber
+ */
+export async function updateOfficialAnswerKeyItem(
+  id: string,
+  questionNumber: number,
+  payload: UpdateOfficialAnswerKeyItemPayload
+): Promise<OfficialAnswerKeyItemDTO> {
+  const encodedId = encodeURIComponent(id.trim());
+  const response = await fetch(
+    `/api/official-answer-keys/${encodedId}/items/${questionNumber}`,
+    {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      `Não foi possível atualizar o item da questão ${questionNumber}.`
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidOfficialAnswerKeyItemDTO(parsed.item)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_ANSWER_KEY_ITEM_PAYLOAD',
+      'Resposta inesperada do servidor ao atualizar item do gabarito oficial.'
+    );
+  }
+
+  return parsed.item;
+}
+
+/**
+ * Substitui atomicamente todos os itens de um rascunho de gabarito oficial.
+ * PUT /api/official-answer-keys/:id/items
+ */
+export async function replaceOfficialAnswerKeyItems(
+  id: string,
+  payload: ReplaceOfficialAnswerKeyItemsPayload
+): Promise<OfficialAnswerKeyItemDTO[]> {
+  const encodedId = encodeURIComponent(id.trim());
+  const response = await fetch(`/api/official-answer-keys/${encodedId}/items`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível substituir os itens do gabarito oficial.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !Array.isArray(parsed.items)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_ANSWER_KEY_ITEMS_PAYLOAD',
+      'Resposta inesperada do servidor ao substituir itens do gabarito oficial.'
+    );
+  }
+
+  return parsed.items as OfficialAnswerKeyItemDTO[];
+}
+
+/**
+ * Exclui atomicamente um rascunho de gabarito oficial.
+ * DELETE /api/official-answer-keys/:id
+ */
+export async function deleteOfficialAnswerKeyDraft(
+  id: string
+): Promise<{ message: string }> {
+  const encodedId = encodeURIComponent(id.trim());
+  const response = await fetch(`/api/official-answer-keys/${encodedId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível excluir o rascunho de gabarito oficial.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  return {
+    message:
+      typeof parsed?.message === 'string'
+        ? parsed.message
+        : 'Rascunho de gabarito oficial excluído com sucesso.',
+  };
+}
+
+/**
+ * Publica atomicamente um gabarito oficial tornando-o vigente.
+ * POST /api/official-answer-keys/:id/publish
+ */
+export async function publishOfficialAnswerKey(
+  id: string,
+  payload: PublishOfficialAnswerKeyPayload = {}
+): Promise<OfficialAnswerKeyDTO> {
+  const encodedId = encodeURIComponent(id.trim());
+  const response = await fetch(`/api/official-answer-keys/${encodedId}/publish`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível publicar o gabarito oficial.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidOfficialAnswerKeyDTO(parsed.answerKey)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_ANSWER_KEY_PAYLOAD',
+      'Resposta inesperada do servidor ao publicar gabarito oficial.'
+    );
+  }
+
+  return parsed.answerKey;
 }

@@ -14,6 +14,7 @@ export type OfficialAnswerKeyErrorCode =
   | 'ANSWER_KEY_DUPLICATE_ITEM'
   | 'ANSWER_KEY_INVALID_DATA'
   | 'ANSWER_KEY_FORBIDDEN'
+  | 'ANSWER_KEY_PUBLISH_CONFLICT'
   | 'EXAM_NOT_FOUND'
   | 'EXAM_FORBIDDEN'
   | 'DOCUMENT_NOT_FOUND'
@@ -27,8 +28,13 @@ export class OfficialAnswerKeyError extends Error {
   public readonly code: OfficialAnswerKeyErrorCode;
   public readonly statusCode: number;
 
-  constructor(code: OfficialAnswerKeyErrorCode, message: string, statusCode = 400) {
-    super(message);
+  constructor(
+    code: OfficialAnswerKeyErrorCode,
+    message: string,
+    statusCode = 400,
+    options?: { cause?: unknown }
+  ) {
+    super(message, options);
     this.name = 'OfficialAnswerKeyError';
     this.code = code;
     this.statusCode = statusCode;

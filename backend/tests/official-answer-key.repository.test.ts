@@ -209,19 +209,25 @@ describe('PrismaOfficialAnswerKeyRepository (backend/src/repositories/official-a
       expect(mockPrisma.officialAnswerKey.create).not.toHaveBeenCalled();
     });
 
-    it('deve propagar erro de restrição de unicidade (P2002) do Prisma', async () => {
+    it('deve converter erro de restrição de unicidade (P2002) em OfficialAnswerKeyError (409)', async () => {
       const prismaError = new Error('Unique constraint failed on the fields: (examId, type, version)');
       (prismaError as any).code = 'P2002';
+      (prismaError as any).meta = { target: ['examId', 'type', 'version'] };
       mockPrisma.officialAnswerKey.create.mockRejectedValue(prismaError);
 
-      await expect(
-        repository.createDraft({
+      try {
+        await repository.createDraft({
           userId: 'user-owner-1',
           examId: 'exam-456',
           type: 'PRELIMINARY',
           version: 1,
-        })
-      ).rejects.toThrow('Unique constraint failed');
+        });
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(OfficialAnswerKeyError);
+        expect((err as OfficialAnswerKeyError).code).toBe('ANSWER_KEY_DUPLICATE_VERSION');
+        expect((err as OfficialAnswerKeyError).statusCode).toBe(409);
+      }
     });
   });
 
@@ -771,7 +777,7 @@ describe('PrismaOfficialAnswerKeyRepository (backend/src/repositories/official-a
   });
 
   describe('9. publishDraft', () => {
-    it('deve publicar o rascunho atomicamente e desativar a versão vigente anterior', async () => {
+    it('deve publicar o rascunho executando na ordem correta: bloqueio do pai, releitura dos itens, validação, desativação da versão anterior e ativação da nova', async () => {
       mockPrisma.officialAnswerKey.updateMany
         .mockResolvedValueOnce({ count: 1 }) // parentLock
         .mockResolvedValueOnce({ count: 1 }); // deactivation of old current
@@ -783,6 +789,7 @@ describe('PrismaOfficialAnswerKeyRepository (backend/src/repositories/official-a
           isCurrent: true,
           items: baseItems,
         }); // final published record
+      mockPrisma.officialAnswerKeyItem.findMany.mockResolvedValueOnce(baseItems); // Releitura transacional
       mockPrisma.officialAnswerKey.update.mockResolvedValue({
         ...baseAnswerKey,
         status: 'PUBLISHED',
@@ -794,17 +801,177 @@ describe('PrismaOfficialAnswerKeyRepository (backend/src/repositories/official-a
       expect(published.status).toBe('PUBLISHED');
       expect(published.isCurrent).toBe(true);
 
-      // Garante desativação de versão anterior vigente
+      // 1. Bloqueio condicional do pai
+      expect(mockPrisma.officialAnswerKey.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { id: 'key-123', userId: 'user-owner-1', status: 'DRAFT' },
+        data: expect.objectContaining({ updatedAt: expect.any(Date) }),
+      });
+
+      // 2. Releitura dos itens dentro da transação
+      expect(mockPrisma.officialAnswerKeyItem.findMany).toHaveBeenCalledWith({
+        where: { answerKeyId: 'key-123' },
+        orderBy: { questionNumber: 'asc' },
+      });
+
+      // 3. Desativação de versão anterior vigente
       expect(mockPrisma.officialAnswerKey.updateMany).toHaveBeenNthCalledWith(2, {
         where: { examId: 'exam-456', isCurrent: true },
         data: expect.objectContaining({ isCurrent: false, status: 'SUPERSEDED' }),
       });
 
-      // Garante ativação da versão corrente
+      // 4. Ativação da versão corrente
       expect(mockPrisma.officialAnswerKey.update).toHaveBeenCalledWith({
         where: { id: 'key-123' },
         data: expect.objectContaining({ status: 'PUBLISHED', isCurrent: true }),
       });
+    });
+
+    it('deve rejeitar publicação quando a releitura transacional encontrar lista vazia de itens (400)', async () => {
+      mockPrisma.officialAnswerKey.updateMany.mockResolvedValueOnce({ count: 1 }); // parentLock
+      mockPrisma.officialAnswerKey.findFirst.mockResolvedValueOnce({
+        id: 'key-123',
+        examId: 'exam-456',
+      });
+      mockPrisma.officialAnswerKeyItem.findMany.mockResolvedValueOnce([]); // Releitura vazia
+
+      try {
+        await repository.publishDraft('key-123', 'user-owner-1');
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(OfficialAnswerKeyError);
+        expect((err as OfficialAnswerKeyError).code).toBe('ANSWER_KEY_INVALID_DATA');
+        expect((err as OfficialAnswerKeyError).statusCode).toBe(400);
+        expect((err as OfficialAnswerKeyError).message).toContain('sem itens cadastrados');
+      }
+
+      // Nenhuma mutação de desativação ou ativação deve ocorrer
+      expect(mockPrisma.officialAnswerKey.update).not.toHaveBeenCalled();
+      expect(mockPrisma.officialAnswerKey.updateMany).toHaveBeenCalledTimes(1); // Apenas parentLock
+    });
+
+    it('deve rejeitar publicação quando a releitura transacional encontrar item em NEEDS_REVIEW (400)', async () => {
+      mockPrisma.officialAnswerKey.updateMany.mockResolvedValueOnce({ count: 1 }); // parentLock
+      mockPrisma.officialAnswerKey.findFirst.mockResolvedValueOnce({
+        id: 'key-123',
+        examId: 'exam-456',
+      });
+      mockPrisma.officialAnswerKeyItem.findMany.mockResolvedValueOnce([
+        baseItems[0],
+        { ...baseItems[1], status: 'NEEDS_REVIEW' },
+      ]);
+
+      try {
+        await repository.publishDraft('key-123', 'user-owner-1');
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(OfficialAnswerKeyError);
+        expect((err as OfficialAnswerKeyError).code).toBe('ANSWER_KEY_INVALID_DATA');
+        expect((err as OfficialAnswerKeyError).statusCode).toBe(400);
+        expect((err as OfficialAnswerKeyError).message).toContain('pendentes de revisão humana');
+      }
+
+      expect(mockPrisma.officialAnswerKey.update).not.toHaveBeenCalled();
+      expect(mockPrisma.officialAnswerKey.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('deve rejeitar publicação quando a releitura transacional encontrar item ativo sem resposta correta (400)', async () => {
+      mockPrisma.officialAnswerKey.updateMany.mockResolvedValueOnce({ count: 1 });
+      mockPrisma.officialAnswerKey.findFirst.mockResolvedValueOnce({
+        id: 'key-123',
+        examId: 'exam-456',
+      });
+      mockPrisma.officialAnswerKeyItem.findMany.mockResolvedValueOnce([
+        baseItems[0],
+        { ...baseItems[1], status: 'ACTIVE', isAnnulled: false, correctAnswer: null },
+      ]);
+
+      try {
+        await repository.publishDraft('key-123', 'user-owner-1');
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(OfficialAnswerKeyError);
+        expect((err as OfficialAnswerKeyError).code).toBe('ANSWER_KEY_INVALID_DATA');
+        expect((err as OfficialAnswerKeyError).statusCode).toBe(400);
+        expect((err as OfficialAnswerKeyError).message).toContain('não possui resposta correta definida');
+      }
+
+      expect(mockPrisma.officialAnswerKey.update).not.toHaveBeenCalled();
+      expect(mockPrisma.officialAnswerKey.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('deve rejeitar publicação quando a releitura transacional encontrar anulação inconsistente (400)', async () => {
+      mockPrisma.officialAnswerKey.updateMany.mockResolvedValueOnce({ count: 1 });
+      mockPrisma.officialAnswerKey.findFirst.mockResolvedValueOnce({
+        id: 'key-123',
+        examId: 'exam-456',
+      });
+      mockPrisma.officialAnswerKeyItem.findMany.mockResolvedValueOnce([
+        { ...baseItems[0], status: 'ANNULLED', isAnnulled: false },
+      ]);
+
+      try {
+        await repository.publishDraft('key-123', 'user-owner-1');
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(OfficialAnswerKeyError);
+        expect((err as OfficialAnswerKeyError).code).toBe('ANSWER_KEY_INVALID_DATA');
+        expect((err as OfficialAnswerKeyError).statusCode).toBe(400);
+        expect((err as OfficialAnswerKeyError).message).toContain('isAnnulled false');
+      }
+
+      expect(mockPrisma.officialAnswerKey.update).not.toHaveBeenCalled();
+      expect(mockPrisma.officialAnswerKey.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('deve converter conflito de publicação concorrente (P2002 no índice parcial exam_current_unique) em ANSWER_KEY_PUBLISH_CONFLICT (409)', async () => {
+      mockPrisma.officialAnswerKey.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockResolvedValueOnce({ count: 1 });
+      mockPrisma.officialAnswerKey.findFirst.mockResolvedValueOnce({
+        id: 'key-123',
+        examId: 'exam-456',
+      });
+      mockPrisma.officialAnswerKeyItem.findMany.mockResolvedValueOnce(baseItems);
+
+      const p2002Error = new Error('Unique constraint failed on the constraint: official_answer_keys_exam_current_unique');
+      (p2002Error as any).code = 'P2002';
+      (p2002Error as any).meta = { constraint: 'official_answer_keys_exam_current_unique', target: ['examId'] };
+      mockPrisma.officialAnswerKey.update.mockRejectedValueOnce(p2002Error);
+
+      try {
+        await repository.publishDraft('key-123', 'user-owner-1');
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(OfficialAnswerKeyError);
+        expect((err as OfficialAnswerKeyError).code).toBe('ANSWER_KEY_PUBLISH_CONFLICT');
+        expect((err as OfficialAnswerKeyError).statusCode).toBe(409);
+        expect((err as OfficialAnswerKeyError).message).toContain('Conflito de publicação concorrente');
+      }
+    });
+
+    it('deve converter erro P2002 de versão duplicada em ANSWER_KEY_DUPLICATE_VERSION (409)', async () => {
+      mockPrisma.officialAnswerKey.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockResolvedValueOnce({ count: 1 });
+      mockPrisma.officialAnswerKey.findFirst.mockResolvedValueOnce({
+        id: 'key-123',
+        examId: 'exam-456',
+      });
+      mockPrisma.officialAnswerKeyItem.findMany.mockResolvedValueOnce(baseItems);
+
+      const p2002Error = new Error('Unique constraint failed on version');
+      (p2002Error as any).code = 'P2002';
+      (p2002Error as any).meta = { target: ['examId', 'type', 'version'] };
+      mockPrisma.officialAnswerKey.update.mockRejectedValueOnce(p2002Error);
+
+      try {
+        await repository.publishDraft('key-123', 'user-owner-1');
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(OfficialAnswerKeyError);
+        expect((err as OfficialAnswerKeyError).code).toBe('ANSWER_KEY_DUPLICATE_VERSION');
+        expect((err as OfficialAnswerKeyError).statusCode).toBe(409);
+      }
     });
 
     it('deve rejeitar publicação de gabarito inexistente com 404', async () => {
