@@ -3,6 +3,8 @@ import type {
   Prisma,
   PrismaClient,
   Question,
+  QuestionDifficulty,
+  QuestionType,
 } from '@prisma/client';
 import { getPrismaClient } from '../config/database.ts';
 import type {
@@ -26,6 +28,18 @@ export interface PaginatedQuestionEntities {
   total: number;
 }
 
+export interface SimulationQuestionCriteria {
+  subject?: string;
+  topic?: string;
+  subtopic?: string;
+  board?: string;
+  examTitle?: string;
+  year?: number;
+  examId?: string;
+  difficulty?: QuestionDifficulty;
+  type?: QuestionType;
+}
+
 export interface IQuestionRepository {
   create(userId: string, data: ParsedCreateQuestionInput): Promise<QuestionWithAlternatives>;
   findById(id: string): Promise<QuestionWithAlternatives | null>;
@@ -38,6 +52,14 @@ export interface IQuestionRepository {
     data: ParsedUpdateQuestionInput
   ): Promise<QuestionWithAlternatives>;
   deleteById(id: string): Promise<void>;
+  findEligibleForSimulation?(
+    userId: string,
+    criteria?: SimulationQuestionCriteria
+  ): Promise<QuestionWithAlternatives[]>;
+  findByIdsAndUser?(
+    ids: string[],
+    userId: string
+  ): Promise<QuestionWithAlternatives[]>;
 }
 
 function mapBaseFields(entity: QuestionWithAlternatives): QuestionBaseDTO {
@@ -272,4 +294,51 @@ export class PrismaQuestionRepository implements IQuestionRepository {
       where: { id },
     });
   }
+
+  async findEligibleForSimulation(
+    userId: string,
+    criteria?: SimulationQuestionCriteria
+  ): Promise<QuestionWithAlternatives[]> {
+    const prisma = this.prismaGetter();
+    return prisma.question.findMany({
+      where: {
+        userId,
+        status: 'ACTIVE',
+        ...(criteria?.subject ? { subject: { contains: criteria.subject, mode: 'insensitive' } } : {}),
+        ...(criteria?.topic ? { topic: { contains: criteria.topic, mode: 'insensitive' } } : {}),
+        ...(criteria?.subtopic ? { subtopic: { contains: criteria.subtopic, mode: 'insensitive' } } : {}),
+        ...(criteria?.board ? { board: { contains: criteria.board, mode: 'insensitive' } } : {}),
+        ...(criteria?.examTitle ? { examTitle: { contains: criteria.examTitle, mode: 'insensitive' } } : {}),
+        ...(criteria?.year ? { year: criteria.year } : {}),
+        ...(criteria?.examId ? { examId: criteria.examId } : {}),
+        ...(criteria?.difficulty ? { difficulty: criteria.difficulty } : {}),
+        ...(criteria?.type ? { type: criteria.type } : {}),
+      },
+      include: {
+        alternatives: {
+          orderBy: { position: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findByIdsAndUser(
+    ids: string[],
+    userId: string
+  ): Promise<QuestionWithAlternatives[]> {
+    const prisma = this.prismaGetter();
+    return prisma.question.findMany({
+      where: {
+        id: { in: ids },
+        userId,
+      },
+      include: {
+        alternatives: {
+          orderBy: { position: 'asc' },
+        },
+      },
+    });
+  }
 }
+

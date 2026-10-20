@@ -3,10 +3,13 @@ import type {
   AnswerKeySource,
   Question,
   QuestionAttempt,
+  QuestionDifficulty,
+  QuestionType,
   Simulation,
   SimulationQuestion,
   SimulationStatus,
 } from '@prisma/client';
+import type { SimulationQuestionCriteria } from '../repositories/question.repository.ts';
 
 export type SimulationErrorCode =
   | 'SIMULATION_NOT_FOUND'
@@ -42,6 +45,7 @@ export class SimulationDomainError extends Error {
 }
 
 export { SimulationStatus, AnswerKeySource };
+export type { SimulationQuestionCriteria };
 
 export interface CreateSimulationQuestionInput {
   questionId: string;
@@ -120,4 +124,94 @@ export interface PaginatedSimulationsResult {
   total: number;
   limit: number;
   offset: number;
+}
+
+// ============================================================================
+// DTOs da Camada de Serviço (Sprint 6.3)
+// ============================================================================
+
+export interface CreateSimulationRequest {
+  title?: string | null;
+  totalQuestions: number;
+  timeLimitSeconds?: number | null;
+  criteria?: SimulationQuestionCriteria;
+  questionIds?: string[];
+}
+
+export interface SubmitAnswerRequest {
+  simulationId: string;
+  questionId: string;
+  selectedAlternativeId?: string | null;
+  timeSpentSeconds?: number | null;
+}
+
+export interface SimulationAlternativeDTO {
+  id: string;
+  letter: string;
+  text: string;
+  position: number;
+}
+
+export interface SimulationPublicQuestionDTO {
+  id: string;
+  simulationId: string;
+  questionId: string;
+  position: number;
+  statement: string;
+  type: QuestionType;
+  subject: string;
+  topic: string | null;
+  subtopic: string | null;
+  board: string | null;
+  examTitle: string | null;
+  year: number | null;
+  difficulty: QuestionDifficulty | null;
+  alternatives: SimulationAlternativeDTO[];
+  currentAttempt?: {
+    selectedAlternativeId: string | null;
+    selectedLetter: string | null;
+    answeredAt: Date | null;
+    timeSpentSeconds: number | null;
+  } | null;
+}
+
+export interface SimulationReviewQuestionDTO extends SimulationPublicQuestionDTO {
+  answerKeySnapshot: string | null;
+  isAnnulledSnapshot: boolean;
+  snapshotSource: AnswerKeySource;
+  officialAnswerKeyVersion: number | null;
+  explanation: string | null;
+  isCorrect: boolean | null;
+}
+
+export interface SimulationSummaryDTO {
+  id: string;
+  userId: string;
+  title: string | null;
+  status: SimulationStatus;
+  totalQuestions: number;
+  timeLimitSeconds: number | null;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  durationSeconds: number | null;
+  scorePercentage: number | null;
+  correctCount: number | null;
+  wrongCount: number | null;
+  unansweredCount: number | null;
+  createdAt: Date;
+}
+
+export interface SimulationDetailDTO extends SimulationSummaryDTO {
+  timeRemainingSeconds: number | null;
+  isExpired: boolean;
+  questions: (SimulationPublicQuestionDTO | SimulationReviewQuestionDTO)[];
+}
+
+export interface SimulationResultDTO extends SimulationDetailDTO {
+  scorePercentage: number;
+  correctCount: number;
+  wrongCount: number;
+  unansweredCount: number;
+  durationSeconds: number;
+  questions: SimulationReviewQuestionDTO[];
 }
