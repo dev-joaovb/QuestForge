@@ -65,6 +65,19 @@ enum DocumentProcessingStatus {
   FAILED
 }
 
+enum SimulationStatus {
+  CREATED
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+  EXPIRED
+}
+
+enum AnswerKeySource {
+  OFFICIAL_KEY
+  QUESTION_BANK
+}
+
 model User {
   id                 String              @id @default(uuid())
   name               String
@@ -78,6 +91,8 @@ model User {
   questions          Question[]
   pdfDocuments       PdfDocument[]
   officialAnswerKeys OfficialAnswerKey[]
+  simulations        Simulation[]
+  questionAttempts   QuestionAttempt[]
 
   @@map("users")
 }
@@ -173,10 +188,12 @@ model Question {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
-  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  exam           Exam?                   @relation(fields: [examId], references: [id], onDelete: SetNull)
-  alternatives   Alternative[]
-  answerKeyItems OfficialAnswerKeyItem[]
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam                Exam?                   @relation(fields: [examId], references: [id], onDelete: SetNull)
+  alternatives        Alternative[]
+  answerKeyItems      OfficialAnswerKeyItem[]
+  simulationQuestions SimulationQuestion[]
+  questionAttempts    QuestionAttempt[]
 
   @@index([userId, createdAt])
   @@index([userId, subject])
@@ -187,13 +204,14 @@ model Question {
 }
 
 model Alternative {
-  id         String @id @default(uuid())
-  questionId String
-  letter     String
-  text       String
-  position   Int
+  id               String            @id @default(uuid())
+  questionId       String
+  letter           String
+  text             String
+  position         Int
 
-  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question         Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionAttempts QuestionAttempt[]
 
   @@unique([questionId, letter])
   @@unique([questionId, position])
@@ -251,4 +269,78 @@ model OfficialAnswerKeyItem {
   @@index([answerKeyId, status])
   @@index([questionId])
   @@map("official_answer_key_items")
+}
+
+model Simulation {
+  id               String           @id @default(uuid())
+  userId           String
+  title            String?
+  status           SimulationStatus @default(CREATED)
+  totalQuestions   Int
+  timeLimitSeconds Int?
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  durationSeconds  Int?
+  scorePercentage  Float?
+  correctCount     Int?
+  wrongCount       Int?
+  unansweredCount  Int?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions        SimulationQuestion[]
+  attempts         QuestionAttempt[]
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@map("simulations")
+}
+
+model SimulationQuestion {
+  id                       String          @id @default(uuid())
+  simulationId             String
+  questionId               String
+  position                 Int
+  answerKeySnapshot        String?
+  isAnnulledSnapshot       Boolean         @default(false)
+  snapshotSource           AnswerKeySource @default(QUESTION_BANK)
+  officialAnswerKeyId      String?
+  officialAnswerKeyItemId  String?
+  officialAnswerKeyVersion Int?
+  createdAt                DateTime        @default(now())
+
+  simulation               Simulation      @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  question                 Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([simulationId, position])
+  @@unique([simulationId, questionId])
+  @@index([simulationId])
+  @@index([questionId])
+  @@map("simulation_questions")
+}
+
+model QuestionAttempt {
+  id                    String       @id @default(uuid())
+  userId                String
+  simulationId          String
+  questionId            String
+  selectedAlternativeId String?
+  selectedLetter        String?
+  isCorrect             Boolean?
+  timeSpentSeconds      Int?
+  answeredAt            DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  simulation            Simulation   @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  question              Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedAlternative   Alternative? @relation(fields: [selectedAlternativeId], references: [id], onDelete: SetNull)
+
+  @@unique([simulationId, questionId])
+  @@index([userId])
+  @@index([simulationId])
+  @@index([questionId])
+  @@map("question_attempts")
 }
