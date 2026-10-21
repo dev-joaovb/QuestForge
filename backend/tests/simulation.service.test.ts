@@ -815,4 +815,533 @@ describe('SimulationService (backend/src/services/simulation.service.ts)', () =>
 
     expect(mockAttemptRepo.upsertAttempt).toHaveBeenCalledTimes(2);
   });
+
+  // ==========================================================================
+  // 21. Sprint 6.3-B: Concorrência e idempotência com updateIfStatus
+  // ==========================================================================
+  it('21. deve utilizar updateIfStatus para transição atômica de status evitando finalizações concorrentes redundantes', async () => {
+    mockSimulationRepo.updateIfStatus = vi.fn().mockResolvedValue({
+      ...baseSimulation,
+      status: 'COMPLETED',
+    });
+    mockSimulationRepo.findByIdWithFullDetails.mockResolvedValue(baseSimulation);
+
+    const result = await simulationService.finishSimulation('user-1', 'sim-1');
+
+    expect(mockSimulationRepo.updateIfStatus).toHaveBeenCalledWith(
+      'sim-1',
+      'user-1',
+      ['CREATED', 'IN_PROGRESS'],
+      expect.objectContaining({
+        status: 'COMPLETED',
+      })
+    );
+    expect(result.status).toBe('COMPLETED');
+  });
+
+  it('22. deve retornar com idempotência se updateIfStatus indicar que outra finalização concorrente já concluiu o simulado', async () => {
+    // updateIfStatus retorna null (conflito: outra transação já alterou o status)
+    mockSimulationRepo.updateIfStatus = vi.fn().mockResolvedValue(null);
+    mockSimulationRepo.findByIdWithFullDetails
+      .mockResolvedValueOnce(baseSimulation) // Primeira consulta antes de tentar finalizar
+      .mockResolvedValueOnce({
+        // Segunda consulta re-obtendo o resultado já concluído pela concorrente
+        ...baseSimulation,
+        status: 'COMPLETED',
+        scorePercentage: 100,
+        correctCount: 2,
+        wrongCount: 0,
+        unansweredCount: 0,
+      });
+
+    const result = await simulationService.finishSimulation('user-1', 'sim-1');
+
+    expect(mockSimulationRepo.updateIfStatus).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe('COMPLETED');
+    expect(result.scorePercentage).toBe(100);
+  });
+
+  // ==========================================================================
+  // 23. Sprint 6.3-B: Fallback de seleção de questões sem truncamento a 50
+  // ==========================================================================
+  it('23. deve paginar completamente no fallback de seleção sem truncar a amostra a 50 questões', async () => {
+    // Sem findEligibleForSimulation -> ativa fallback
+    delete mockQuestionRepo.findEligibleForSimulation;
+
+    // Simula 75 questões ativas divididas em 2 páginas
+    const page1Questions: QuestionWithAlternatives[] = Array.from({ length: 50 }, (_, i) => ({
+      ...sampleQuestion1,
+      id: `q-p1-${i + 1}`,
+      statement: `Questão Página 1 #${i + 1}`,
+    }));
+
+    const page2Questions: QuestionWithAlternatives[] = Array.from({ length: 25 }, (_, i) => ({
+      ...sampleQuestion2,
+      id: `q-p2-${i + 1}`,
+      statement: `Questão Página 2 #${i + 1}`,
+    }));
+
+    mockQuestionRepo.findManyByUser.mockImplementation((_userId: string, query: any) => {
+      if (query.page === 1) {
+        return Promise.resolve({
+          items: page1Questions,
+          total: 75,
+        });
+      }
+      return Promise.resolve({
+        items: page2Questions,
+        total: 75,
+      });
+    });
+
+    mockOfficialKeyRepo.findCurrentByExamIdWithItems.mockResolvedValue(null);
+
+    mockSimulationRepo.create.mockResolvedValue({
+      id: 'sim-paginated',
+      userId: 'user-1',
+      title: 'Simulado Amostra Grande',
+      status: 'CREATED',
+      totalQuestions: 60,
+      timeLimitSeconds: null,
+      startedAt: null,
+      finishedAt: null,
+      durationSeconds: null,
+      scorePercentage: null,
+      correctCount: null,
+      wrongCount: null,
+      unansweredCount: null,
+      createdAt: mockDate,
+      updatedAt: mockDate,
+      questions: [],
+    });
+
+    // Solicita 60 questões (que antes falharia com 422 se truncado a 50)
+    await simulationService.createSimulation('user-1', {
+      totalQuestions: 60,
+    });
+
+    // Deve ter chamado as 2 páginas
+    expect(mockQuestionRepo.findManyByUser).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ page: 1, limit: 50 })
+    );
+    expect(mockQuestionRepo.findManyByUser).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ page: 2, limit: 50 })
+    );
+
+    // Deve ter criado simulado com as 60 questões selecionadas da amostra completa de 75
+    expect(mockSimulationRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        totalQuestions: 60,
+        questions: expect.arrayContaining([expect.objectContaining({ position: 1 })]),
+      })
+    );
+  });
+
+  // ==========================================================================
+  // 24. Sprint 6.3-B: Preservação de tentativas ao expirar simulado em submitAnswer
+  // ==========================================================================
+  it('24. deve preservar tentativas existentes ao expirar simulado cronometrado durante submitAnswer', async () => {
+    const expiredSimulation: SimulationWithFullDetails = {
+      ...baseSimulation,
+      timeLimitSeconds: 300,
+      startedAt: new Date(Date.now() - 600 * 1000), // Expirado há 5 minutos
+      attempts: [
+        {
+          id: 'att-1',
+          userId: 'user-1',
+          simulationId: 'sim-1',
+          questionId: 'q-1',
+          selectedAlternativeId: 'alt-1a',
+          selectedLetter: 'A',
+          isCorrect: true, // Questão 1 acertada
+          timeSpentSeconds: 40,
+          answeredAt: mockDate,
+          createdAt: mockDate,
+          updatedAt: mockDate,
+        },
+      ],
+    };
+
+    mockSimulationRepo.findByIdWithQuestions.mockResolvedValue(expiredSimulation);
+    mockSimulationRepo.findByIdWithFullDetails.mockResolvedValue(expiredSimulation);
+
+    await expect(
+      simulationService.submitAnswer('user-1', {
+        simulationId: 'sim-1',
+        questionId: 'q-2',
+        selectedAlternativeId: 'alt-2a',
+      })
+    ).rejects.toMatchObject({
+      code: 'SIMULATION_EXPIRED',
+      statusCode: 410,
+    });
+
+    // Finalização como EXPIRED deve consolidar a tentativa existente (1 acerto, 1 em branco)
+    expect(mockSimulationRepo.update).toHaveBeenCalledWith(
+      'sim-1',
+      'user-1',
+      expect.objectContaining({
+        status: 'EXPIRED',
+        correctCount: 1,
+        unansweredCount: 1,
+        wrongCount: 0,
+        scorePercentage: 50.0,
+      })
+    );
+  });
+
+  // ==========================================================================
+  // SPRINT 6.3-D: TESTES OBRIGATÓRIOS DE CONCORRÊNCIA E INTEGRIDADE ATÔMICA
+  // ==========================================================================
+  describe('Sprint 6.3-D: Concorrência e integridade atômica', () => {
+    // Cenário 1: submitAnswer obtém a trava antes de finishSimulation
+    // (a resposta deve ser persistida e o resultado consolidado final deve incluí-la)
+    it('Cenário 1: submitAnswer obtém a trava antes de finishSimulation -> resposta persistida e consolidada no resultado final', async () => {
+      let lockQueue = Promise.resolve();
+      const attemptsStore: any[] = [];
+      const currentSimState: any = { ...baseSimulation, attempts: attemptsStore };
+
+      mockSimulationRepo.executeInSimulationLock = vi.fn().mockImplementation(async (_simId, _userId, action) => {
+        const prev = lockQueue;
+        let resolveNext: () => void;
+        lockQueue = new Promise((resolve) => { resolveNext = resolve; });
+        await prev;
+        try {
+          const lockedSimRepo = {
+            ...mockSimulationRepo,
+            findByIdWithQuestions: vi.fn().mockResolvedValue(currentSimState),
+            findByIdWithFullDetails: vi.fn().mockResolvedValue({ ...currentSimState, attempts: [...attemptsStore] }),
+            update: vi.fn().mockImplementation(async (_id, _u, data) => {
+              Object.assign(currentSimState, data);
+              return currentSimState;
+            }),
+            updateIfStatus: vi.fn().mockImplementation(async (_id, _u, statuses, data) => {
+              if (statuses.includes(currentSimState.status)) {
+                Object.assign(currentSimState, data);
+                return currentSimState;
+              }
+              return null;
+            }),
+          };
+          const lockedAttemptRepo = {
+            ...mockAttemptRepo,
+            upsertAttempt: vi.fn().mockImplementation(async (attData) => {
+              const newAtt = { id: 'att-created', ...attData, createdAt: new Date(), updatedAt: new Date() };
+              attemptsStore.push(newAtt);
+              return newAtt;
+            }),
+          };
+          return await action(lockedSimRepo, lockedAttemptRepo);
+        } finally {
+          resolveNext!();
+        }
+      });
+
+      const submitPromise = simulationService.submitAnswer('user-1', {
+        simulationId: 'sim-1',
+        questionId: 'q-1',
+        selectedAlternativeId: 'alt-1a',
+      });
+      const finishPromise = simulationService.finishSimulation('user-1', 'sim-1');
+
+      const [submitRes, finishRes] = await Promise.all([submitPromise, finishPromise]);
+
+      expect(submitRes.selectedLetter).toBe('A');
+      expect(submitRes.isCorrect).toBe(true);
+      expect(finishRes.status).toBe('COMPLETED');
+      expect(finishRes.correctCount).toBe(1);
+      expect(finishRes.scorePercentage).toBe(50.0);
+    });
+
+    // Cenário 2: finishSimulation obtém a trava antes de submitAnswer
+    // (o simulado deve ser concluído e a submissão subsequente rejeitada com 409 sem alterar tentativas)
+    it('Cenário 2: finishSimulation obtém a trava antes de submitAnswer -> simulado concluído e submissão rejeitada com 409', async () => {
+      let lockQueue = Promise.resolve();
+      const attemptsStore: any[] = [];
+      const currentSimState: any = { ...baseSimulation, attempts: attemptsStore };
+
+      mockSimulationRepo.executeInSimulationLock = vi.fn().mockImplementation(async (_simId, _userId, action) => {
+        const prev = lockQueue;
+        let resolveNext: () => void;
+        lockQueue = new Promise((resolve) => { resolveNext = resolve; });
+        await prev;
+        try {
+          const lockedSimRepo = {
+            ...mockSimulationRepo,
+            findByIdWithQuestions: vi.fn().mockResolvedValue(currentSimState),
+            findByIdWithFullDetails: vi.fn().mockResolvedValue({ ...currentSimState, attempts: [...attemptsStore] }),
+            update: vi.fn().mockImplementation(async (_id, _u, data) => {
+              Object.assign(currentSimState, data);
+              return currentSimState;
+            }),
+            updateIfStatus: vi.fn().mockImplementation(async (_id, _u, statuses, data) => {
+              if (statuses.includes(currentSimState.status)) {
+                Object.assign(currentSimState, data);
+                return currentSimState;
+              }
+              return null;
+            }),
+          };
+          const lockedAttemptRepo = {
+            ...mockAttemptRepo,
+            upsertAttempt: vi.fn().mockImplementation(async (attData) => {
+              const newAtt = { id: 'att-created', ...attData };
+              attemptsStore.push(newAtt);
+              return newAtt;
+            }),
+          };
+          return await action(lockedSimRepo, lockedAttemptRepo);
+        } finally {
+          resolveNext!();
+        }
+      });
+
+      const finishRes = await simulationService.finishSimulation('user-1', 'sim-1');
+      expect(finishRes.status).toBe('COMPLETED');
+
+      await expect(
+        simulationService.submitAnswer('user-1', {
+          simulationId: 'sim-1',
+          questionId: 'q-1',
+          selectedAlternativeId: 'alt-1a',
+        })
+      ).rejects.toMatchObject({
+        name: 'SimulationDomainError',
+        code: 'SIMULATION_ALREADY_COMPLETED',
+        statusCode: 409,
+      });
+
+      expect(attemptsStore).toHaveLength(0);
+    });
+
+    // Cenário 3: Duas chamadas simultâneas a finishSimulation
+    // (a primeira conclui, a segunda é serializada e retorna o resultado consolidado sem recalcular incorretamente)
+    it('Cenário 3: Duas chamadas simultâneas a finishSimulation -> idempotência serializada', async () => {
+      let lockQueue = Promise.resolve();
+      let updateCount = 0;
+      const currentSimState: any = { ...baseSimulation, attempts: [] };
+
+      mockSimulationRepo.executeInSimulationLock = vi.fn().mockImplementation(async (_simId, _userId, action) => {
+        const prev = lockQueue;
+        let resolveNext: () => void;
+        lockQueue = new Promise((resolve) => { resolveNext = resolve; });
+        await prev;
+        try {
+          const lockedSimRepo = {
+            ...mockSimulationRepo,
+            findByIdWithFullDetails: vi.fn().mockResolvedValue({ ...currentSimState }),
+            updateIfStatus: vi.fn().mockImplementation(async (_id, _u, statuses, data) => {
+              if (statuses.includes(currentSimState.status)) {
+                updateCount++;
+                Object.assign(currentSimState, data);
+                return currentSimState;
+              }
+              return null;
+            }),
+          };
+          return await action(lockedSimRepo, mockAttemptRepo);
+        } finally {
+          resolveNext!();
+        }
+      });
+
+      const [res1, res2] = await Promise.all([
+        simulationService.finishSimulation('user-1', 'sim-1'),
+        simulationService.finishSimulation('user-1', 'sim-1'),
+      ]);
+
+      expect(res1.status).toBe('COMPLETED');
+      expect(res2.status).toBe('COMPLETED');
+      expect(updateCount).toBe(1);
+    });
+
+    // Cenário 4: Expiração concorrente com submissão
+    // (respostas já confirmadas são preservadas, tentativas após expiração não são gravadas)
+    it('Cenário 4: Expiração concorrente com submissão -> respostas confirmadas preservadas, novas respostas rejeitadas com 410', async () => {
+      const expiredSimulation: any = {
+        ...baseSimulation,
+        timeLimitSeconds: 60,
+        startedAt: new Date(Date.now() - 3600 * 1000),
+        attempts: [
+          {
+            id: 'att-1',
+            userId: 'user-1',
+            simulationId: 'sim-1',
+            questionId: 'q-1',
+            selectedAlternativeId: 'alt-1a',
+            selectedLetter: 'A',
+            isCorrect: true,
+            timeSpentSeconds: 30,
+            answeredAt: mockDate,
+            createdAt: mockDate,
+            updatedAt: mockDate,
+          },
+        ],
+      };
+
+      mockSimulationRepo.executeInSimulationLock = vi.fn().mockImplementation(async (_simId, _userId, action) => {
+        const lockedSimRepo = {
+          ...mockSimulationRepo,
+          findByIdWithQuestions: vi.fn().mockResolvedValue(expiredSimulation),
+          findByIdWithFullDetails: vi.fn().mockResolvedValue(expiredSimulation),
+          update: vi.fn().mockImplementation(async (_id, _u, data) => {
+            Object.assign(expiredSimulation, data);
+            return expiredSimulation;
+          }),
+        };
+        return action(lockedSimRepo, mockAttemptRepo);
+      });
+
+      await expect(
+        simulationService.submitAnswer('user-1', {
+          simulationId: 'sim-1',
+          questionId: 'q-2',
+          selectedAlternativeId: 'alt-2a',
+        })
+      ).rejects.toMatchObject({
+        code: 'SIMULATION_EXPIRED',
+        statusCode: 410,
+      });
+
+      expect(mockAttemptRepo.upsertAttempt).not.toHaveBeenCalled();
+      expect(expiredSimulation.status).toBe('EXPIRED');
+      expect(expiredSimulation.correctCount).toBe(1);
+    });
+
+    // Cenário 5: Concorrência entre startSimulation e abandonSimulation ou finishSimulation
+    // (transições de estado não devem gerar estados inconsistentes)
+    it('Cenário 5: Concorrência entre startSimulation e abandonSimulation -> transições consistentes sem sobrescrita', async () => {
+      let lockQueue = Promise.resolve();
+      const currentSimState: any = {
+        ...baseSimulation,
+        status: 'CREATED' as SimulationStatus,
+        startedAt: null,
+      };
+
+      mockSimulationRepo.executeInSimulationLock = vi.fn().mockImplementation(async (_simId, _userId, action) => {
+        const prev = lockQueue;
+        let resolveNext: () => void;
+        lockQueue = new Promise((resolve) => { resolveNext = resolve; });
+        await prev;
+        try {
+          const lockedSimRepo = {
+            ...mockSimulationRepo,
+            findByIdWithFullDetails: vi.fn().mockResolvedValue({ ...currentSimState }),
+            findByIdAndUser: vi.fn().mockResolvedValue({ ...currentSimState }),
+            updateIfStatus: vi.fn().mockImplementation(async (_id, _u, statuses, data) => {
+              if (statuses.includes(currentSimState.status)) {
+                Object.assign(currentSimState, data);
+                return currentSimState;
+              }
+              return null;
+            }),
+            update: vi.fn().mockImplementation(async (_id, _u, data) => {
+              Object.assign(currentSimState, data);
+              return currentSimState;
+            }),
+          };
+          return await action(lockedSimRepo, mockAttemptRepo);
+        } finally {
+          resolveNext!();
+        }
+      });
+
+      const abandonRes = await simulationService.abandonSimulation('user-1', 'sim-1');
+      expect(abandonRes.status).toBe('ABANDONED');
+
+      await expect(
+        simulationService.startSimulation('user-1', 'sim-1')
+      ).rejects.toMatchObject({
+        code: 'SIMULATION_NOT_IN_PROGRESS',
+        statusCode: 400,
+      });
+    });
+
+    // Cenário 6: Submissões concorrentes para a mesma questão
+    // (nenhuma duplicação, última escrita serializada persiste)
+    it('Cenário 6: Submissões concorrentes para a mesma questão -> serializadas e a última persiste', async () => {
+      let lockQueue = Promise.resolve();
+      const attemptsStore = new Map<string, any>();
+
+      mockSimulationRepo.executeInSimulationLock = vi.fn().mockImplementation(async (_simId, _userId, action) => {
+        const prev = lockQueue;
+        let resolveNext: () => void;
+        lockQueue = new Promise((resolve) => { resolveNext = resolve; });
+        await prev;
+        try {
+          const lockedSimRepo = {
+            ...mockSimulationRepo,
+            findByIdWithQuestions: vi.fn().mockResolvedValue(baseSimulation),
+          };
+          const lockedAttemptRepo = {
+            ...mockAttemptRepo,
+            upsertAttempt: vi.fn().mockImplementation(async (data) => {
+              const attempt = { id: 'att-1', ...data };
+              attemptsStore.set(data.questionId, attempt);
+              return attempt;
+            }),
+          };
+          return await action(lockedSimRepo, lockedAttemptRepo);
+        } finally {
+          resolveNext!();
+        }
+      });
+
+      await Promise.all([
+        simulationService.submitAnswer('user-1', {
+          simulationId: 'sim-1',
+          questionId: 'q-1',
+          selectedAlternativeId: 'alt-1a',
+        }),
+        simulationService.submitAnswer('user-1', {
+          simulationId: 'sim-1',
+          questionId: 'q-1',
+          selectedAlternativeId: 'alt-1b',
+        }),
+      ]);
+
+      expect(attemptsStore.size).toBe(1);
+      expect(attemptsStore.get('q-1')).toBeDefined();
+    });
+
+    // Cenário 7: Falha durante a transação
+    // (rollback garante que o simulado não fique com status de finalizado sem contadores atualizados)
+    it('Cenário 7: Falha durante a transação sob lock -> exceção propagada para acionar rollback atômico', async () => {
+      mockSimulationRepo.executeInSimulationLock = vi.fn().mockImplementation(async () => {
+        throw new Error('Database disk error during transaction');
+      });
+
+      await expect(
+        simulationService.finishSimulation('user-1', 'sim-1')
+      ).rejects.toThrow('Database disk error during transaction');
+    });
+
+    // Cenário 8: Isolamento entre usuários
+    // (usuário B não consegue travar nem alterar simulado do usuário A)
+    it('Cenário 8: Isolamento entre usuários -> usuário B recebe 404 e não obtém acesso ao simulado do usuário A', async () => {
+      mockSimulationRepo.executeInSimulationLock = vi.fn().mockImplementation(async (_simId, _userId, action) => {
+        const lockedSimRepo = {
+          ...mockSimulationRepo,
+          findByIdWithQuestions: vi.fn().mockResolvedValue(null),
+          findByIdWithFullDetails: vi.fn().mockResolvedValue(null),
+        };
+        return action(lockedSimRepo, mockAttemptRepo);
+      });
+
+      await expect(
+        simulationService.submitAnswer('usuario-invasor', {
+          simulationId: 'sim-1',
+          questionId: 'q-1',
+          selectedAlternativeId: 'alt-1a',
+        })
+      ).rejects.toMatchObject({
+        code: 'SIMULATION_NOT_FOUND',
+        statusCode: 404,
+      });
+
+      expect(mockAttemptRepo.upsertAttempt).not.toHaveBeenCalled();
+    });
+  });
 });

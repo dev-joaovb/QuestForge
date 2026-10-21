@@ -73,7 +73,8 @@ export interface PaginatedQuestionsResult<T = QuestionResponseDTO> {
 export type QuestionErrorCode =
   | 'QUESTION_NOT_FOUND'
   | 'QUESTION_FORBIDDEN'
-  | 'QUESTION_VALIDATION_ERROR';
+  | 'QUESTION_VALIDATION_ERROR'
+  | 'QUESTION_LINKED_TO_SIMULATION';
 
 export class QuestionDomainError extends Error {
   public readonly code: QuestionErrorCode;

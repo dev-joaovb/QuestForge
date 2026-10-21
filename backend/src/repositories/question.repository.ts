@@ -7,11 +7,12 @@ import type {
   QuestionType,
 } from '@prisma/client';
 import { getPrismaClient } from '../config/database.ts';
-import type {
-  AlternativeDTO,
-  QuestionBaseDTO,
-  QuestionOwnerDetailDTO,
-  QuestionPublicViewDTO,
+import {
+  QuestionDomainError,
+  type AlternativeDTO,
+  type QuestionBaseDTO,
+  type QuestionOwnerDetailDTO,
+  type QuestionPublicViewDTO,
 } from '../types/question.types.ts';
 import type {
   ParsedCreateQuestionInput,
@@ -52,6 +53,7 @@ export interface IQuestionRepository {
     data: ParsedUpdateQuestionInput
   ): Promise<QuestionWithAlternatives>;
   deleteById(id: string): Promise<void>;
+  countSimulationUsages?(questionId: string): Promise<number>;
   findEligibleForSimulation?(
     userId: string,
     criteria?: SimulationQuestionCriteria
@@ -288,11 +290,34 @@ export class PrismaQuestionRepository implements IQuestionRepository {
     });
   }
 
+  async countSimulationUsages(questionId: string): Promise<number> {
+    const prisma = this.prismaGetter();
+    return (prisma as PrismaClient).simulationQuestion.count({
+      where: { questionId },
+    });
+  }
+
   async deleteById(id: string): Promise<void> {
     const prisma = this.prismaGetter();
-    await prisma.question.delete({
-      where: { id },
-    });
+    try {
+      await (prisma as PrismaClient).question.delete({
+        where: { id },
+      });
+    } catch (error: unknown) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        ((error as { code?: string }).code === 'P2003' ||
+          (error as { code?: string }).code === 'P2014')
+      ) {
+        throw new QuestionDomainError(
+          'QUESTION_LINKED_TO_SIMULATION',
+          'Esta questão não pode ser excluída pois está vinculada a simulados históricos.',
+          409
+        );
+      }
+      throw error;
+    }
   }
 
   async findEligibleForSimulation(

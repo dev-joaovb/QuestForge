@@ -311,7 +311,7 @@ model SimulationQuestion {
   createdAt                DateTime        @default(now())
 
   simulation               Simulation      @relation(fields: [simulationId], references: [id], onDelete: Cascade)
-  question                 Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question                 Question        @relation(fields: [questionId], references: [id], onDelete: Restrict)
 
   @@unique([simulationId, position])
   @@unique([simulationId, questionId])
@@ -335,7 +335,7 @@ model QuestionAttempt {
 
   user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   simulation            Simulation   @relation(fields: [simulationId], references: [id], onDelete: Cascade)
-  question              Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question              Question     @relation(fields: [questionId], references: [id], onDelete: Restrict)
   selectedAlternative   Alternative? @relation(fields: [selectedAlternativeId], references: [id], onDelete: SetNull)
 
   @@unique([simulationId, questionId])

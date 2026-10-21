@@ -235,6 +235,17 @@ export class QuestionService {
       );
     }
 
+    if (this.questionRepository.countSimulationUsages) {
+      const simulationCount = await this.questionRepository.countSimulationUsages(questionId);
+      if (simulationCount > 0) {
+        throw new QuestionDomainError(
+          'QUESTION_LINKED_TO_SIMULATION',
+          `Esta questão não pode ser excluída pois está vinculada a ${simulationCount} simulado(s) histórico(s).`,
+          409
+        );
+      }
+    }
+
     await this.questionRepository.deleteById(questionId);
 
     logger.info('question_deleted', {

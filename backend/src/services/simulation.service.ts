@@ -105,6 +105,29 @@ export class SimulationService {
     return id.trim();
   }
 
+  /**
+   * Executa a ação sob sincronização serializada do registro do simulado (row lock).
+   * Se o repositório suportar executeInSimulationLock, utiliza a transação com trava;
+   * caso contrário (ex: mocks em testes unitários simples), executa diretamente.
+   */
+  private async withSimulationLock<T>(
+    simulationId: string,
+    userId: string,
+    action: (
+      txSimRepo: ISimulationRepository,
+      txAttemptRepo: IQuestionAttemptRepository
+    ) => Promise<T>
+  ): Promise<T> {
+    if (this.simulationRepository.executeInSimulationLock) {
+      return this.simulationRepository.executeInSimulationLock(
+        simulationId,
+        userId,
+        action
+      );
+    }
+    return action(this.simulationRepository, this.questionAttemptRepository);
+  }
+
   private calculateTimer(simulation: Simulation): {
     isExpired: boolean;
     timeRemainingSeconds: number | null;
@@ -288,19 +311,40 @@ export class SimulationService {
           request.criteria
         );
       } else {
-        const paginated = await this.questionRepository.findManyByUser(validUserId, {
-          page: 1,
-          limit: 50,
-          search: undefined,
-          includeAnswer: true,
-          subject: request.criteria?.subject,
-          topic: request.criteria?.topic,
-          board: request.criteria?.board,
-          examTitle: request.criteria?.examTitle,
-          type: request.criteria?.type,
-          difficulty: request.criteria?.difficulty,
-        });
-        candidateQuestions = paginated.items.filter((q) => q.status === 'ACTIVE');
+        const allCandidates: QuestionWithAlternatives[] = [];
+        let currentPage = 1;
+        const pageSize = 50;
+        let hasMore = true;
+
+        while (hasMore) {
+          const paginated = await this.questionRepository.findManyByUser(validUserId, {
+            page: currentPage,
+            limit: pageSize,
+            search: undefined,
+            includeAnswer: true,
+            subject: request.criteria?.subject,
+            topic: request.criteria?.topic,
+            board: request.criteria?.board,
+            examTitle: request.criteria?.examTitle,
+            type: request.criteria?.type,
+            difficulty: request.criteria?.difficulty,
+          });
+
+          const activeItems = paginated.items.filter((q) => q.status === 'ACTIVE');
+          allCandidates.push(...activeItems);
+
+          if (
+            paginated.items.length === 0 ||
+            allCandidates.length >= paginated.total ||
+            currentPage * pageSize >= paginated.total
+          ) {
+            hasMore = false;
+          } else {
+            currentPage++;
+          }
+        }
+
+        candidateQuestions = allCandidates;
       }
     }
 
@@ -406,60 +450,70 @@ export class SimulationService {
     const validUserId = this.assertValidActorUserId(actorUserId);
     const validSimId = this.assertValidId(simulationId, 'simulationId');
 
-    const simulation = await this.simulationRepository.findByIdWithFullDetails(
-      validSimId,
-      validUserId
-    );
-
-    if (!simulation) {
-      throw new SimulationDomainError(
-        'SIMULATION_NOT_FOUND',
-        'Simulado não encontrado.',
-        404
+    return this.withSimulationLock(validSimId, validUserId, async (txSimRepo) => {
+      const simulation = await txSimRepo.findByIdWithFullDetails(
+        validSimId,
+        validUserId
       );
-    }
 
-    // Idempotência se já estiver em andamento
-    if (simulation.status === 'IN_PROGRESS') {
-      const { isExpired } = this.calculateTimer(simulation);
-      if (isExpired) {
-        return this.finalizeInternal(simulation, validUserId, 'EXPIRED');
+      if (!simulation) {
+        throw new SimulationDomainError(
+          'SIMULATION_NOT_FOUND',
+          'Simulado não encontrado.',
+          404
+        );
       }
+
+      // Idempotência se já estiver em andamento
+      if (simulation.status === 'IN_PROGRESS') {
+        const { isExpired } = this.calculateTimer(simulation);
+        if (isExpired) {
+          await this.finalizeInternalWithRepo(simulation, validUserId, 'EXPIRED', txSimRepo);
+          simulation.status = 'EXPIRED';
+        }
+        return this.toSimulationDetailDTO(simulation);
+      }
+
+      if (simulation.status === 'COMPLETED' || simulation.status === 'EXPIRED') {
+        throw new SimulationDomainError(
+          'SIMULATION_ALREADY_COMPLETED',
+          'Este simulado já foi finalizado e não pode ser reiniciado.',
+          409
+        );
+      }
+
+      if (simulation.status === 'ABANDONED') {
+        throw new SimulationDomainError(
+          'SIMULATION_NOT_IN_PROGRESS',
+          'Este simulado foi abandonado e não pode ser iniciado.',
+          400
+        );
+      }
+
+      const startedAt = new Date();
+      if (txSimRepo.updateIfStatus) {
+        await txSimRepo.updateIfStatus(validSimId, validUserId, ['CREATED'], {
+          status: 'IN_PROGRESS',
+          startedAt,
+        });
+      } else {
+        await txSimRepo.update(validSimId, validUserId, {
+          status: 'IN_PROGRESS',
+          startedAt,
+        });
+      }
+
+      simulation.status = 'IN_PROGRESS';
+      simulation.startedAt = startedAt;
+
+      logger.info('simulation_started', {
+        simulationId: validSimId,
+        userId: validUserId,
+        startedAt,
+      });
+
       return this.toSimulationDetailDTO(simulation);
-    }
-
-    if (simulation.status === 'COMPLETED' || simulation.status === 'EXPIRED') {
-      throw new SimulationDomainError(
-        'SIMULATION_ALREADY_COMPLETED',
-        'Este simulado já foi finalizado e não pode ser reiniciado.',
-        409
-      );
-    }
-
-    if (simulation.status === 'ABANDONED') {
-      throw new SimulationDomainError(
-        'SIMULATION_NOT_IN_PROGRESS',
-        'Este simulado foi abandonado e não pode ser iniciado.',
-        400
-      );
-    }
-
-    const startedAt = new Date();
-    await this.simulationRepository.update(validSimId, validUserId, {
-      status: 'IN_PROGRESS',
-      startedAt,
     });
-
-    simulation.status = 'IN_PROGRESS';
-    simulation.startedAt = startedAt;
-
-    logger.info('simulation_started', {
-      simulationId: validSimId,
-      userId: validUserId,
-      startedAt,
-    });
-
-    return this.toSimulationDetailDTO(simulation);
   }
 
   /**
@@ -489,7 +543,16 @@ export class SimulationService {
     if (simulation.status === 'IN_PROGRESS') {
       const { isExpired } = this.calculateTimer(simulation);
       if (isExpired) {
-        return this.finalizeInternal(simulation, validUserId, 'EXPIRED');
+        const finalized = await this.withSimulationLock(validSimId, validUserId, async (txSimRepo) => {
+          const fullSim = await txSimRepo.findByIdWithFullDetails(validSimId, validUserId);
+          if (!fullSim || fullSim.status === 'COMPLETED' || fullSim.status === 'EXPIRED') {
+            return fullSim ?? simulation;
+          }
+          await this.finalizeInternalWithRepo(fullSim, validUserId, 'EXPIRED', txSimRepo);
+          fullSim.status = 'EXPIRED';
+          return fullSim;
+        });
+        return this.toSimulationDetailDTO(finalized);
       }
     }
 
@@ -499,6 +562,7 @@ export class SimulationService {
   /**
    * Registra ou altera a resposta do usuário a uma questão do simulado.
    * `isCorrect` é calculado exclusivamente pelo backend com base no snapshot do gabarito.
+   * Executa sob bloqueio serializado da simulação para garantir consistência estrita.
    */
   async submitAnswer(
     actorUserId: string,
@@ -508,150 +572,169 @@ export class SimulationService {
     const validSimId = this.assertValidId(request.simulationId, 'simulationId');
     const validQId = this.assertValidId(request.questionId, 'questionId');
 
-    const simulation = await this.simulationRepository.findByIdWithQuestions(
-      validSimId,
-      validUserId
-    );
-
-    if (!simulation) {
-      throw new SimulationDomainError(
-        'SIMULATION_NOT_FOUND',
-        'Simulado não encontrado.',
-        404
-      );
-    }
-
-    if (simulation.status === 'COMPLETED') {
-      throw new SimulationDomainError(
-        'SIMULATION_ALREADY_COMPLETED',
-        'Este simulado já foi finalizado e não aceita novas respostas.',
-        409
-      );
-    }
-
-    if (simulation.status === 'EXPIRED') {
-      throw new SimulationDomainError(
-        'SIMULATION_EXPIRED',
-        'O tempo limite do simulado expirou.',
-        410
-      );
-    }
-
-    if (simulation.status === 'ABANDONED') {
-      throw new SimulationDomainError(
-        'SIMULATION_NOT_IN_PROGRESS',
-        'Este simulado foi abandonado e não aceita respostas.',
-        400
-      );
-    }
-
-    // Iniciar automaticamente caso a primeira resposta venha com status CREATED
-    if (simulation.status === 'CREATED') {
-      const startedAt = new Date();
-      await this.simulationRepository.update(validSimId, validUserId, {
-        status: 'IN_PROGRESS',
-        startedAt,
-      });
-      simulation.status = 'IN_PROGRESS';
-      simulation.startedAt = startedAt;
-    }
-
-    // Checagem de tempo expirado
-    const { isExpired } = this.calculateTimer(simulation);
-    if (isExpired) {
-      await this.finalizeInternal(
-        { ...simulation, attempts: [] },
-        validUserId,
-        'EXPIRED'
-      );
-      throw new SimulationDomainError(
-        'SIMULATION_EXPIRED',
-        'O tempo limite do simulado expirou.',
-        410
-      );
-    }
-
-    // Localizar a questão no simulado
-    const simQuestion = simulation.questions.find(
-      (sq) => sq.questionId === validQId
-    );
-
-    if (!simQuestion) {
-      throw new SimulationDomainError(
-        'SIMULATION_QUESTION_MISMATCH',
-        'A questão informada não pertence a este simulado.',
-        400
-      );
-    }
-
-    let selectedAlternativeId: string | null = null;
-    let selectedLetter: string | null = null;
-    let isCorrect: boolean | null = null;
-
-    if (
-      request.selectedAlternativeId !== null &&
-      request.selectedAlternativeId !== undefined &&
-      request.selectedAlternativeId.trim() !== ''
-    ) {
-      const cleanAltId = request.selectedAlternativeId.trim();
-
-      // Validação: a alternativa deve pertencer à questão respondida (Resolve ACH-02 da auditoria)
-      const foundAlt = simQuestion.question.alternatives.find(
-        (a) => a.id === cleanAltId
+    return this.withSimulationLock(validSimId, validUserId, async (txSimRepo, txAttemptRepo) => {
+      const simulation = await txSimRepo.findByIdWithQuestions(
+        validSimId,
+        validUserId
       );
 
-      if (!foundAlt) {
+      if (!simulation) {
         throw new SimulationDomainError(
-          'ALTERNATIVE_MISMATCH',
-          'A alternativa selecionada não pertence a esta questão ou não existe.',
+          'SIMULATION_NOT_FOUND',
+          'Simulado não encontrado.',
+          404
+        );
+      }
+
+      if (simulation.status === 'COMPLETED') {
+        throw new SimulationDomainError(
+          'SIMULATION_ALREADY_COMPLETED',
+          'Este simulado já foi finalizado e não aceita novas respostas.',
+          409
+        );
+      }
+
+      if (simulation.status === 'EXPIRED') {
+        throw new SimulationDomainError(
+          'SIMULATION_EXPIRED',
+          'O tempo limite do simulado expirou.',
+          410
+        );
+      }
+
+      if (simulation.status === 'ABANDONED') {
+        throw new SimulationDomainError(
+          'SIMULATION_NOT_IN_PROGRESS',
+          'Este simulado foi abandonado e não aceita respostas.',
           400
         );
       }
 
-      selectedAlternativeId = foundAlt.id;
-      // Letra extraída diretamente da alternativa validada no banco
-      selectedLetter = foundAlt.letter.trim().toUpperCase();
-
-      // Cálculo de correção no backend usando o snapshot do simulado
-      if (simQuestion.isAnnulledSnapshot) {
-        // Questão anulada atribui ponto a todos os candidatos
-        isCorrect = true;
-      } else if (simQuestion.answerKeySnapshot) {
-        isCorrect =
-          selectedLetter === simQuestion.answerKeySnapshot.trim().toUpperCase();
-      } else {
-        isCorrect = false;
+      // Iniciar automaticamente caso a primeira resposta venha com status CREATED
+      if (simulation.status === 'CREATED') {
+        const startedAt = new Date();
+        if (txSimRepo.updateIfStatus) {
+          await txSimRepo.updateIfStatus(validSimId, validUserId, ['CREATED'], {
+            status: 'IN_PROGRESS',
+            startedAt,
+          });
+        } else {
+          await txSimRepo.update(validSimId, validUserId, {
+            status: 'IN_PROGRESS',
+            startedAt,
+          });
+        }
+        simulation.status = 'IN_PROGRESS';
+        simulation.startedAt = startedAt;
       }
-    } else {
-      // Resposta em branco ou desmarcada
-      selectedAlternativeId = null;
-      selectedLetter = null;
-      isCorrect = null;
-    }
 
-    const attempt = await this.questionAttemptRepository.upsertAttempt({
-      userId: validUserId,
-      simulationId: validSimId,
-      questionId: validQId,
-      selectedAlternativeId,
-      selectedLetter,
-      isCorrect,
-      timeSpentSeconds: request.timeSpentSeconds ?? null,
-      answeredAt: new Date(),
+      // Checagem de tempo expirado
+      const { isExpired } = this.calculateTimer(simulation);
+      if (isExpired) {
+        const fullSim = await txSimRepo.findByIdWithFullDetails(
+          validSimId,
+          validUserId
+        );
+        if (fullSim) {
+          await this.finalizeInternalWithRepo(fullSim, validUserId, 'EXPIRED', txSimRepo);
+        } else {
+          await this.finalizeInternalWithRepo(
+            { ...simulation, attempts: [] },
+            validUserId,
+            'EXPIRED',
+            txSimRepo
+          );
+        }
+        throw new SimulationDomainError(
+          'SIMULATION_EXPIRED',
+          'O tempo limite do simulado expirou.',
+          410
+        );
+      }
+
+      // Localizar a questão no simulado
+      const simQuestion = simulation.questions.find(
+        (sq) => sq.questionId === validQId
+      );
+
+      if (!simQuestion) {
+        throw new SimulationDomainError(
+          'SIMULATION_QUESTION_MISMATCH',
+          'A questão informada não pertence a este simulado.',
+          400
+        );
+      }
+
+      let selectedAlternativeId: string | null = null;
+      let selectedLetter: string | null = null;
+      let isCorrect: boolean | null = null;
+
+      if (
+        request.selectedAlternativeId !== null &&
+        request.selectedAlternativeId !== undefined &&
+        request.selectedAlternativeId.trim() !== ''
+      ) {
+        const cleanAltId = request.selectedAlternativeId.trim();
+
+        // Validação: a alternativa deve pertencer à questão respondida (Resolve ACH-02 da auditoria)
+        const foundAlt = simQuestion.question.alternatives.find(
+          (a) => a.id === cleanAltId
+        );
+
+        if (!foundAlt) {
+          throw new SimulationDomainError(
+            'ALTERNATIVE_MISMATCH',
+            'A alternativa selecionada não pertence a esta questão ou não existe.',
+            400
+          );
+        }
+
+        selectedAlternativeId = foundAlt.id;
+        // Letra extraída diretamente da alternativa validada no banco
+        selectedLetter = foundAlt.letter.trim().toUpperCase();
+
+        // Cálculo de correção no backend usando o snapshot do simulado
+        if (simQuestion.isAnnulledSnapshot) {
+          // Questão anulada atribui ponto a todos os candidatos
+          isCorrect = true;
+        } else if (simQuestion.answerKeySnapshot) {
+          isCorrect =
+            selectedLetter === simQuestion.answerKeySnapshot.trim().toUpperCase();
+        } else {
+          isCorrect = false;
+        }
+      } else {
+        // Resposta em branco ou desmarcada
+        selectedAlternativeId = null;
+        selectedLetter = null;
+        isCorrect = null;
+      }
+
+      const attempt = await txAttemptRepo.upsertAttempt({
+        userId: validUserId,
+        simulationId: validSimId,
+        questionId: validQId,
+        selectedAlternativeId,
+        selectedLetter,
+        isCorrect,
+        timeSpentSeconds: request.timeSpentSeconds ?? null,
+        answeredAt: new Date(),
+      });
+
+      logger.info('simulation_answer_submitted', {
+        simulationId: validSimId,
+        questionId: validQId,
+        userId: validUserId,
+        hasAnswer: selectedAlternativeId !== null,
+      });
+
+      return attempt;
     });
-
-    logger.info('simulation_answer_submitted', {
-      simulationId: validSimId,
-      questionId: validQId,
-      userId: validUserId,
-      hasAnswer: selectedAlternativeId !== null,
-    });
-
-    return attempt;
   }
 
   /**
    * Finaliza o simulado, calcula os resultados consolidados e os persiste no PostgreSQL.
+   * Executa sob bloqueio serializado da simulação para garantir consistência estrita.
    */
   async finishSimulation(
     actorUserId: string,
@@ -660,36 +743,38 @@ export class SimulationService {
     const validUserId = this.assertValidActorUserId(actorUserId);
     const validSimId = this.assertValidId(simulationId, 'simulationId');
 
-    const simulation = await this.simulationRepository.findByIdWithFullDetails(
-      validSimId,
-      validUserId
-    );
-
-    if (!simulation) {
-      throw new SimulationDomainError(
-        'SIMULATION_NOT_FOUND',
-        'Simulado não encontrado.',
-        404
+    return this.withSimulationLock(validSimId, validUserId, async (txSimRepo) => {
+      const simulation = await txSimRepo.findByIdWithFullDetails(
+        validSimId,
+        validUserId
       );
-    }
 
-    // Idempotência
-    if (simulation.status === 'COMPLETED' || simulation.status === 'EXPIRED') {
-      return this.toSimulationResultDTO(simulation);
-    }
+      if (!simulation) {
+        throw new SimulationDomainError(
+          'SIMULATION_NOT_FOUND',
+          'Simulado não encontrado.',
+          404
+        );
+      }
 
-    if (simulation.status === 'ABANDONED') {
-      throw new SimulationDomainError(
-        'SIMULATION_NOT_IN_PROGRESS',
-        'Um simulado abandonado não pode ser finalizado.',
-        400
-      );
-    }
+      // Idempotência
+      if (simulation.status === 'COMPLETED' || simulation.status === 'EXPIRED') {
+        return this.toSimulationResultDTO(simulation);
+      }
 
-    const { isExpired } = this.calculateTimer(simulation);
-    const targetStatus = isExpired ? 'EXPIRED' : 'COMPLETED';
+      if (simulation.status === 'ABANDONED') {
+        throw new SimulationDomainError(
+          'SIMULATION_NOT_IN_PROGRESS',
+          'Um simulado abandonado não pode ser finalizado.',
+          400
+        );
+      }
 
-    return this.finalizeInternal(simulation, validUserId, targetStatus);
+      const { isExpired } = this.calculateTimer(simulation);
+      const targetStatus = isExpired ? 'EXPIRED' : 'COMPLETED';
+
+      return this.finalizeInternalWithRepo(simulation, validUserId, targetStatus, txSimRepo);
+    });
   }
 
   /**
@@ -699,6 +784,20 @@ export class SimulationService {
     simulation: SimulationWithFullDetails,
     actorUserId: string,
     targetStatus: 'COMPLETED' | 'EXPIRED'
+  ): Promise<SimulationResultDTO> {
+    return this.finalizeInternalWithRepo(
+      simulation,
+      actorUserId,
+      targetStatus,
+      this.simulationRepository
+    );
+  }
+
+  private async finalizeInternalWithRepo(
+    simulation: SimulationWithFullDetails,
+    actorUserId: string,
+    targetStatus: 'COMPLETED' | 'EXPIRED',
+    repo: ISimulationRepository
   ): Promise<SimulationResultDTO> {
     const attemptsMap = new Map<string, QuestionAttemptWithAlternative>();
     for (const att of simulation.attempts) {
@@ -751,7 +850,7 @@ export class SimulationService {
       }
     }
 
-    await this.simulationRepository.update(simulation.id, actorUserId, {
+    const updatePayload = {
       status: targetStatus,
       finishedAt,
       durationSeconds,
@@ -759,7 +858,28 @@ export class SimulationService {
       correctCount,
       wrongCount,
       unansweredCount,
-    });
+    };
+
+    if (repo.updateIfStatus) {
+      const updated = await repo.updateIfStatus(
+        simulation.id,
+        actorUserId,
+        ['CREATED', 'IN_PROGRESS'],
+        updatePayload
+      );
+
+      if (!updated) {
+        const refetched = await repo.findByIdWithFullDetails(
+          simulation.id,
+          actorUserId
+        );
+        if (refetched && (refetched.status === 'COMPLETED' || refetched.status === 'EXPIRED')) {
+          return this.toSimulationResultDTO(refetched);
+        }
+      }
+    } else {
+      await repo.update(simulation.id, actorUserId, updatePayload);
+    }
 
     simulation.status = targetStatus;
     simulation.finishedAt = finishedAt;
@@ -783,7 +903,7 @@ export class SimulationService {
   }
 
   /**
-   * Abandona o simulado em andamento.
+   * Abandona o simulado em andamento sob bloqueio serializado.
    */
   async abandonSimulation(
     actorUserId: string,
@@ -792,43 +912,70 @@ export class SimulationService {
     const validUserId = this.assertValidActorUserId(actorUserId);
     const validSimId = this.assertValidId(simulationId, 'simulationId');
 
-    const simulation = await this.simulationRepository.findByIdAndUser(
-      validSimId,
-      validUserId
-    );
-
-    if (!simulation) {
-      throw new SimulationDomainError(
-        'SIMULATION_NOT_FOUND',
-        'Simulado não encontrado.',
-        404
+    return this.withSimulationLock(validSimId, validUserId, async (txSimRepo) => {
+      const simulation = await txSimRepo.findByIdAndUser(
+        validSimId,
+        validUserId
       );
-    }
 
-    if (simulation.status === 'COMPLETED' || simulation.status === 'EXPIRED') {
-      throw new SimulationDomainError(
-        'SIMULATION_ALREADY_COMPLETED',
-        'Este simulado já foi finalizado e não pode ser abandonado.',
-        409
-      );
-    }
+      if (!simulation) {
+        throw new SimulationDomainError(
+          'SIMULATION_NOT_FOUND',
+          'Simulado não encontrado.',
+          404
+        );
+      }
 
-    if (simulation.status === 'ABANDONED') {
-      return this.toSimulationSummaryDTO(simulation);
-    }
+      if (simulation.status === 'COMPLETED' || simulation.status === 'EXPIRED') {
+        throw new SimulationDomainError(
+          'SIMULATION_ALREADY_COMPLETED',
+          'Este simulado já foi finalizado e não pode ser abandonado.',
+          409
+        );
+      }
 
-    const finishedAt = new Date();
-    const updated = await this.simulationRepository.update(validSimId, validUserId, {
-      status: 'ABANDONED',
-      finishedAt,
+      if (simulation.status === 'ABANDONED') {
+        return this.toSimulationSummaryDTO(simulation);
+      }
+
+      const finishedAt = new Date();
+      let updated: Simulation;
+      if (txSimRepo.updateIfStatus) {
+        const res = await txSimRepo.updateIfStatus(
+          validSimId,
+          validUserId,
+          ['CREATED', 'IN_PROGRESS'],
+          {
+            status: 'ABANDONED',
+            finishedAt,
+          }
+        );
+        if (!res) {
+          const refetched = await txSimRepo.findByIdAndUser(validSimId, validUserId);
+          if (refetched?.status === 'COMPLETED' || refetched?.status === 'EXPIRED') {
+            throw new SimulationDomainError(
+              'SIMULATION_ALREADY_COMPLETED',
+              'Este simulado já foi finalizado e não pode ser abandonado.',
+              409
+            );
+          }
+          return this.toSimulationSummaryDTO(refetched ?? simulation);
+        }
+        updated = res;
+      } else {
+        updated = await txSimRepo.update(validSimId, validUserId, {
+          status: 'ABANDONED',
+          finishedAt,
+        });
+      }
+
+      logger.info('simulation_abandoned', {
+        simulationId: validSimId,
+        userId: validUserId,
+      });
+
+      return this.toSimulationSummaryDTO(updated);
     });
-
-    logger.info('simulation_abandoned', {
-      simulationId: validSimId,
-      userId: validUserId,
-    });
-
-    return this.toSimulationSummaryDTO(updated);
   }
 
   /**

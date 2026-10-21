@@ -15,6 +15,10 @@ import {
   type SimulationWithQuestions,
   type UpdateSimulationInput,
 } from '../types/simulation.types.ts';
+import {
+  PrismaQuestionAttemptRepository,
+  type IQuestionAttemptRepository,
+} from './question-attempt.repository.ts';
 
 function isPrismaUniqueConstraintError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
@@ -65,8 +69,22 @@ export interface ISimulationRepository {
   findByIdWithFullDetails(id: string, userId: string): Promise<SimulationWithFullDetails | null>;
   findManyByUser(userId: string, filters?: SimulationFilterParams): Promise<PaginatedSimulationsResult>;
   update(id: string, userId: string, data: UpdateSimulationInput): Promise<Simulation>;
+  updateIfStatus?(
+    id: string,
+    userId: string,
+    expectedStatuses: SimulationStatus[],
+    data: UpdateSimulationInput
+  ): Promise<Simulation | null>;
   delete(id: string, userId: string): Promise<boolean>;
   countByUserAndStatus(userId: string, status?: SimulationStatus): Promise<number>;
+  executeInSimulationLock?<T>(
+    simulationId: string,
+    userId: string,
+    action: (
+      txSimulationRepo: ISimulationRepository,
+      txAttemptRepo: IQuestionAttemptRepository
+    ) => Promise<T>
+  ): Promise<T>;
 }
 
 export class PrismaSimulationRepository implements ISimulationRepository {
@@ -288,6 +306,44 @@ export class PrismaSimulationRepository implements ISimulationRepository {
     });
   }
 
+  async updateIfStatus(
+    id: string,
+    userId: string,
+    expectedStatuses: SimulationStatus[],
+    data: UpdateSimulationInput
+  ): Promise<Simulation | null> {
+    const prisma = this.prismaGetter();
+
+    const updateData: Prisma.SimulationUpdateInput = {};
+
+    if (data.title !== undefined) updateData.title = data.title;
+    if (data.status !== undefined) updateData.status = data.status;
+    if (data.startedAt !== undefined) updateData.startedAt = data.startedAt;
+    if (data.finishedAt !== undefined) updateData.finishedAt = data.finishedAt;
+    if (data.durationSeconds !== undefined) updateData.durationSeconds = data.durationSeconds;
+    if (data.scorePercentage !== undefined) updateData.scorePercentage = data.scorePercentage;
+    if (data.correctCount !== undefined) updateData.correctCount = data.correctCount;
+    if (data.wrongCount !== undefined) updateData.wrongCount = data.wrongCount;
+    if (data.unansweredCount !== undefined) updateData.unansweredCount = data.unansweredCount;
+
+    const result = await (prisma as PrismaClient).simulation.updateMany({
+      where: {
+        id,
+        userId,
+        status: { in: expectedStatuses },
+      },
+      data: updateData,
+    });
+
+    if (result.count === 0) {
+      return null;
+    }
+
+    return (prisma as PrismaClient).simulation.findFirst({
+      where: { id, userId },
+    });
+  }
+
   async delete(id: string, userId: string): Promise<boolean> {
     const prisma = this.prismaGetter();
 
@@ -314,5 +370,45 @@ export class PrismaSimulationRepository implements ISimulationRepository {
         ...(status ? { status } : {}),
       },
     });
+  }
+
+  /**
+   * Executa uma operação coordenada sob uma transação interativa do Prisma com bloqueio exclusivo
+   * de linha (row lock) no PostgreSQL (`SELECT ... FOR UPDATE`), serializando submissões, início,
+   * finalização e abandono para o mesmo registro de simulado.
+   */
+  async executeInSimulationLock<T>(
+    simulationId: string,
+    userId: string,
+    action: (
+      txSimulationRepo: ISimulationRepository,
+      txAttemptRepo: IQuestionAttemptRepository
+    ) => Promise<T>
+  ): Promise<T> {
+    const prisma = this.prismaGetter();
+
+    const runInTx = async (tx: Prisma.TransactionClient) => {
+      // Adquire bloqueio exclusivo de linha (row lock) no PostgreSQL
+      // Tabela física: "simulations" conforme @@map("simulations")
+      // Colunas: "id", "userId" conforme schema e migration 20261015120000_add_simulations_engine
+      await tx.$queryRaw`
+        SELECT "id" FROM "simulations"
+        WHERE "id" = ${simulationId} AND "userId" = ${userId}
+        FOR UPDATE
+      `;
+
+      const txSimRepo = new PrismaSimulationRepository(tx);
+      const txAttemptRepo = new PrismaQuestionAttemptRepository(tx);
+
+      return action(txSimRepo, txAttemptRepo);
+    };
+
+    if ('$transaction' in prisma && typeof (prisma as PrismaClient).$transaction === 'function') {
+      return (prisma as PrismaClient).$transaction(async (tx) => {
+        return runInTx(tx);
+      });
+    }
+
+    return runInTx(prisma as Prisma.TransactionClient);
   }
 }

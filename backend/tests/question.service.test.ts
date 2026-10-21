@@ -169,6 +169,12 @@ class InMemoryQuestionRepository implements IQuestionRepository {
     return updated;
   }
 
+  public simulationUsages = new Map<string, number>();
+
+  async countSimulationUsages(questionId: string): Promise<number> {
+    return this.simulationUsages.get(questionId) ?? 0;
+  }
+
   async deleteById(id: string): Promise<void> {
     this.questions.delete(id);
   }
@@ -412,5 +418,49 @@ describe('QuestionService — Regras de Domínio do Banco de Questões (backend/
     expect(paginated.items).toHaveLength(2);
     expect(paginated.total).toBe(3);
     expect(paginated.totalPages).toBe(2);
+  });
+
+  // ==========================================================================
+  // Sprint 6.3-B: Preservação de Histórico — Bloqueio de Exclusão de Questão
+  // ==========================================================================
+  it('deve bloquear exclusão de questão vinculada a simulados históricos com QUESTION_LINKED_TO_SIMULATION e HTTP 409', async () => {
+    const question = await service.createQuestion(USER_A, {
+      statement: 'Questão vinculada a simulado histórico.',
+      subject: 'Direito Administrativo',
+      alternatives: [
+        { letter: 'A', text: 'Opção A' },
+        { letter: 'B', text: 'Opção B' },
+      ],
+    });
+
+    // Simula que a questão foi incluída em 2 simulados
+    repo.simulationUsages.set(question.id, 2);
+
+    await expect(service.deleteQuestion(USER_A, question.id)).rejects.toMatchObject({
+      code: 'QUESTION_LINKED_TO_SIMULATION',
+      statusCode: 409,
+    });
+
+    // Questão continua existindo no banco
+    const stillExists = await repo.findById(question.id);
+    expect(stillExists).not.toBeNull();
+  });
+
+  it('deve permitir exclusão de questão quando não houver simulados vinculados', async () => {
+    const question = await service.createQuestion(USER_A, {
+      statement: 'Questão sem simulados vinculados.',
+      subject: 'Direito Constitucional',
+      alternatives: [
+        { letter: 'A', text: 'Opção A' },
+        { letter: 'B', text: 'Opção B' },
+      ],
+    });
+
+    repo.simulationUsages.set(question.id, 0);
+
+    await service.deleteQuestion(USER_A, question.id);
+
+    const deleted = await repo.findById(question.id);
+    expect(deleted).toBeNull();
   });
 });

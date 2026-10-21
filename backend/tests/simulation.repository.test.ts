@@ -91,6 +91,7 @@ describe('PrismaSimulationRepository (backend/src/repositories/simulation.reposi
         findFirst: vi.fn(),
         findMany: vi.fn(),
         update: vi.fn(),
+        updateMany: vi.fn(),
         delete: vi.fn(),
         count: vi.fn(),
       },
@@ -508,6 +509,100 @@ describe('PrismaSimulationRepository (backend/src/repositories/simulation.reposi
         where: { userId: 'user-1', status: 'COMPLETED' },
       });
       expect(count).toBe(3);
+    });
+  });
+
+  describe('updateIfStatus', () => {
+    it('deve atualizar condicionalmente quando o status atual for compatível', async () => {
+      mockPrisma.simulation.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.simulation.findFirst.mockResolvedValue({
+        ...baseSimulation,
+        status: 'COMPLETED',
+      });
+
+      const result = await repository.updateIfStatus(
+        'sim-100',
+        'user-1',
+        ['CREATED', 'IN_PROGRESS'],
+        { status: 'COMPLETED' }
+      );
+
+      expect(mockPrisma.simulation.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'sim-100',
+          userId: 'user-1',
+          status: { in: ['CREATED', 'IN_PROGRESS'] },
+        },
+        data: { status: 'COMPLETED' },
+      });
+      expect(result?.status).toBe('COMPLETED');
+    });
+
+    it('deve retornar null se count for 0 (status já alterado por operação concorrente)', async () => {
+      mockPrisma.simulation.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await repository.updateIfStatus(
+        'sim-100',
+        'user-1',
+        ['CREATED', 'IN_PROGRESS'],
+        { status: 'COMPLETED' }
+      );
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('executeInSimulationLock', () => {
+    it('deve executar $transaction e adquirir row lock com SELECT ... FOR UPDATE', async () => {
+      const mockTx: any = {
+        $queryRaw: vi.fn().mockResolvedValue([{ id: 'sim-100' }]),
+        simulation: {
+          findFirst: vi.fn().mockResolvedValue(baseSimulation),
+        },
+        questionAttempt: {
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+      };
+
+      mockPrisma.$transaction = vi.fn().mockImplementation(async (callback) => {
+        return callback(mockTx);
+      });
+
+      const actionSpy = vi.fn().mockImplementation(async (txSimRepo, txAttemptRepo) => {
+        expect(txSimRepo).toBeDefined();
+        expect(txAttemptRepo).toBeDefined();
+        return 'success-result';
+      });
+
+      const result = await repository.executeInSimulationLock(
+        'sim-100',
+        'user-1',
+        actionSpy
+      );
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockTx.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(actionSpy).toHaveBeenCalledTimes(1);
+      expect(result).toBe('success-result');
+    });
+
+    it('deve propagar erro lançado dentro da ação transacional abortando a transação', async () => {
+      const mockTx: any = {
+        $queryRaw: vi.fn().mockResolvedValue([{ id: 'sim-100' }]),
+      };
+
+      mockPrisma.$transaction = vi.fn().mockImplementation(async (callback) => {
+        return callback(mockTx);
+      });
+
+      const failingAction = vi.fn().mockRejectedValue(new Error('Transaction action failed'));
+
+      await expect(
+        repository.executeInSimulationLock('sim-100', 'user-1', failingAction)
+      ).rejects.toThrow('Transaction action failed');
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockTx.$queryRaw).toHaveBeenCalledTimes(1);
     });
   });
 });
