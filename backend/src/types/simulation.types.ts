@@ -138,11 +138,28 @@ export interface CreateSimulationRequest {
   questionIds?: string[];
 }
 
+export type { QuestionAttempt };
+
 export interface SubmitAnswerRequest {
   simulationId: string;
   questionId: string;
   selectedAlternativeId?: string | null;
   timeSpentSeconds?: number | null;
+}
+
+/**
+ * DTO público retornado pela API HTTP durante a submissão de respostas.
+ * Oculta estritamente `isCorrect` e campos de gabarito para proteção anti-cheating.
+ */
+export interface PublicQuestionAttemptDTO {
+  id: string;
+  simulationId: string;
+  questionId: string;
+  userId: string;
+  selectedAlternativeId: string | null;
+  selectedLetter: string | null;
+  timeSpentSeconds: number | null;
+  answeredAt: Date | null;
 }
 
 export interface SimulationAlternativeDTO {

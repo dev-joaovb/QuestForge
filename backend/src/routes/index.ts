@@ -13,6 +13,10 @@ import {
   createOfficialAnswerKeyRouter,
   type OfficialAnswerKeyRouterDependencies,
 } from './official-answer-key.routes.ts';
+import {
+  createSimulationRouter,
+  type SimulationRouterDependencies,
+} from './simulation.routes.ts';
 
 export interface ApiRouterDependencies {
   health?: HealthCheckDependencies;
@@ -20,6 +24,7 @@ export interface ApiRouterDependencies {
   questions?: QuestionRouterDependencies;
   documents?: PdfDocumentRouterDependencies;
   officialAnswerKeys?: OfficialAnswerKeyRouterDependencies;
+  simulations?: SimulationRouterDependencies;
 }
 
 export function createApiRouter(deps?: ApiRouterDependencies): Router {
@@ -55,6 +60,13 @@ export function createApiRouter(deps?: ApiRouterDependencies): Router {
     createOfficialAnswerKeyRouter({
       authService: deps?.officialAnswerKeys?.authService ?? deps?.auth?.authService,
       officialAnswerKeyService: deps?.officialAnswerKeys?.officialAnswerKeyService,
+    })
+  );
+  apiRouter.use(
+    '/simulations',
+    createSimulationRouter({
+      authService: deps?.simulations?.authService ?? deps?.auth?.authService,
+      simulationService: deps?.simulations?.simulationService,
     })
   );
 
