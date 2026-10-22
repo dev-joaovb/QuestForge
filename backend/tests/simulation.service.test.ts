@@ -224,6 +224,9 @@ describe('SimulationService (backend/src/services/simulation.service.ts)', () =>
       update: vi.fn(),
       delete: vi.fn(),
       countByUserAndStatus: vi.fn(),
+      executeInSimulationLock: vi.fn().mockImplementation(async (_simId, _userId, action) => {
+        return action(mockSimulationRepo, mockAttemptRepo);
+      }),
     };
 
     mockAttemptRepo = {
@@ -1342,6 +1345,84 @@ describe('SimulationService (backend/src/services/simulation.service.ts)', () =>
       });
 
       expect(mockAttemptRepo.upsertAttempt).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // SPRINT 6.3-F: ATOMICIDADE DA EXCLUSÃO E CONTRATO OBRIGATÓRIO DE CONCORRÊNCIA
+  // ==========================================================================
+  describe('Sprint 6.3-F: Atomicidade da exclusão e contrato obrigatório de concorrência', () => {
+    it('1. deve excluir tentativas e simulado atomicamente sob a mesma transação com trava', async () => {
+      mockSimulationRepo.findByIdAndUser.mockResolvedValue(baseSimulation);
+      mockAttemptRepo.deleteBySimulation.mockResolvedValue(2);
+      mockSimulationRepo.delete.mockResolvedValue(true);
+
+      const result = await simulationService.deleteSimulation('user-1', 'sim-1');
+
+      expect(result).toBe(true);
+      expect(mockSimulationRepo.executeInSimulationLock).toHaveBeenCalledWith(
+        'sim-1',
+        'user-1',
+        expect.any(Function)
+      );
+      expect(mockAttemptRepo.deleteBySimulation).toHaveBeenCalledWith('sim-1');
+      expect(mockSimulationRepo.delete).toHaveBeenCalledWith('sim-1', 'user-1');
+    });
+
+    it('2. deve propagar erro e abortar transação com rollback quando a exclusão do simulado falhar após excluir tentativas', async () => {
+      mockSimulationRepo.findByIdAndUser.mockResolvedValue(baseSimulation);
+      mockAttemptRepo.deleteBySimulation.mockResolvedValue(2);
+      mockSimulationRepo.delete.mockRejectedValue(new Error('Falha de banco ao excluir simulado'));
+
+      await expect(
+        simulationService.deleteSimulation('user-1', 'sim-1')
+      ).rejects.toThrow('Falha de banco ao excluir simulado');
+
+      expect(mockSimulationRepo.executeInSimulationLock).toHaveBeenCalledTimes(1);
+    });
+
+    it('3. deve garantir isolamento de propriedade durante a exclusão rejeitando com 404 sem excluir dados', async () => {
+      mockSimulationRepo.findByIdAndUser.mockResolvedValue(null);
+
+      await expect(
+        simulationService.deleteSimulation('usuario-invasor', 'sim-1')
+      ).rejects.toMatchObject({
+        name: 'SimulationDomainError',
+        code: 'SIMULATION_NOT_FOUND',
+        statusCode: 404,
+      });
+
+      expect(mockAttemptRepo.deleteBySimulation).not.toHaveBeenCalled();
+      expect(mockSimulationRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('4. deve comprovar ausência de caminho de exclusão sem transação (falha na trava impede qualquer exclusão)', async () => {
+      mockSimulationRepo.executeInSimulationLock = vi.fn().mockRejectedValue(
+        new Error('Falha ao adquirir row lock no PostgreSQL')
+      );
+
+      await expect(
+        simulationService.deleteSimulation('user-1', 'sim-1')
+      ).rejects.toThrow('Falha ao adquirir row lock no PostgreSQL');
+
+      expect(mockAttemptRepo.deleteBySimulation).not.toHaveBeenCalled();
+      expect(mockSimulationRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('5. deve assegurar que todas as chamadas de withSimulationLock exigem executeInSimulationLock sem fallback permissivo', async () => {
+      const brokenRepo: any = {
+        ...mockSimulationRepo,
+      };
+      delete brokenRepo.executeInSimulationLock;
+
+      const brokenService = new SimulationService({
+        simulationRepository: brokenRepo as ISimulationRepository,
+        questionAttemptRepository: mockAttemptRepo,
+      });
+
+      await expect(
+        brokenService.deleteSimulation('user-1', 'sim-1')
+      ).rejects.toThrow();
     });
   });
 });

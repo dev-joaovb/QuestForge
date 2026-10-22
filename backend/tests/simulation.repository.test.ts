@@ -604,5 +604,9 @@ describe('PrismaSimulationRepository (backend/src/repositories/simulation.reposi
       expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
       expect(mockTx.$queryRaw).toHaveBeenCalledTimes(1);
     });
+
+    it('deve implementar obrigatoriamente executeInSimulationLock conforme contrato de ISimulationRepository', () => {
+      expect(typeof repository.executeInSimulationLock).toBe('function');
+    });
   });
 });

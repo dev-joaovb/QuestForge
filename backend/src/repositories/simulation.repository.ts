@@ -77,7 +77,7 @@ export interface ISimulationRepository {
   ): Promise<Simulation | null>;
   delete(id: string, userId: string): Promise<boolean>;
   countByUserAndStatus(userId: string, status?: SimulationStatus): Promise<number>;
-  executeInSimulationLock?<T>(
+  executeInSimulationLock<T>(
     simulationId: string,
     userId: string,
     action: (

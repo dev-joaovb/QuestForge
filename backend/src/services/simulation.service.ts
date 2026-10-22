@@ -107,8 +107,7 @@ export class SimulationService {
 
   /**
    * Executa a ação sob sincronização serializada do registro do simulado (row lock).
-   * Se o repositório suportar executeInSimulationLock, utiliza a transação com trava;
-   * caso contrário (ex: mocks em testes unitários simples), executa diretamente.
+   * O repositório obrigatoriamente implementa executeInSimulationLock no contrato ISimulationRepository.
    */
   private async withSimulationLock<T>(
     simulationId: string,
@@ -118,14 +117,11 @@ export class SimulationService {
       txAttemptRepo: IQuestionAttemptRepository
     ) => Promise<T>
   ): Promise<T> {
-    if (this.simulationRepository.executeInSimulationLock) {
-      return this.simulationRepository.executeInSimulationLock(
-        simulationId,
-        userId,
-        action
-      );
-    }
-    return action(this.simulationRepository, this.questionAttemptRepository);
+    return this.simulationRepository.executeInSimulationLock(
+      simulationId,
+      userId,
+      action
+    );
   }
 
   private calculateTimer(simulation: Simulation): {
@@ -990,7 +986,7 @@ export class SimulationService {
   }
 
   /**
-   * Exclui um simulado e suas tentativas de forma segura e contextual.
+   * Exclui um simulado e suas tentativas de forma atômica e coordenada sob bloqueio serializado.
    */
   async deleteSimulation(
     actorUserId: string,
@@ -999,21 +995,23 @@ export class SimulationService {
     const validUserId = this.assertValidActorUserId(actorUserId);
     const validSimId = this.assertValidId(simulationId, 'simulationId');
 
-    const existing = await this.simulationRepository.findByIdAndUser(
-      validSimId,
-      validUserId
-    );
-
-    if (!existing) {
-      throw new SimulationDomainError(
-        'SIMULATION_NOT_FOUND',
-        'Simulado não encontrado.',
-        404
+    return this.withSimulationLock(validSimId, validUserId, async (txSimRepo, txAttemptRepo) => {
+      const existing = await txSimRepo.findByIdAndUser(
+        validSimId,
+        validUserId
       );
-    }
 
-    await this.questionAttemptRepository.deleteBySimulation(validSimId);
-    return this.simulationRepository.delete(validSimId, validUserId);
+      if (!existing) {
+        throw new SimulationDomainError(
+          'SIMULATION_NOT_FOUND',
+          'Simulado não encontrado.',
+          404
+        );
+      }
+
+      await txAttemptRepo.deleteBySimulation(validSimId);
+      return txSimRepo.delete(validSimId, validUserId);
+    });
   }
 
   // ============================================================================
