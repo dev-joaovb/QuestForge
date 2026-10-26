@@ -17,6 +17,8 @@ import { DocumentsPage } from './pages/DocumentsPage.tsx';
 import { OfficialAnswerKeysPage } from './pages/OfficialAnswerKeysPage.tsx';
 import { SimulationsListPage } from './pages/SimulationsListPage.tsx';
 import { SimulationCreatePage } from './pages/SimulationCreatePage.tsx';
+import { SimulationPlayPage } from './pages/SimulationPlayPage.tsx';
+import { SimulationResultPage } from './pages/SimulationResultPage.tsx';
 
 export function AppRoutes() {
   return (
@@ -36,6 +38,8 @@ export function AppRoutes() {
         <Route path="/official-answer-keys" element={<OfficialAnswerKeysPage />} />
         <Route path="/simulations" element={<SimulationsListPage />} />
         <Route path="/simulations/new" element={<SimulationCreatePage />} />
+        <Route path="/simulations/:id/results" element={<SimulationResultPage />} />
+        <Route path="/simulations/:id" element={<SimulationPlayPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthProvider>

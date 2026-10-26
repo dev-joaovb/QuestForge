@@ -567,12 +567,13 @@ export function SimulationsListPage() {
                                   )}
 
                                   {isFinished && (
-                                    <span
-                                      title="A tela de revisão detalhada com gabarito será habilitada na etapa seguinte"
-                                      className="rounded-md border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-400 cursor-not-allowed"
+                                    <Link
+                                      to={`/simulations/${sim.id}/results`}
+                                      title="Consultar resultados e gabarito oficial com revisão"
+                                      className="rounded-md border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-xs font-semibold text-blue-400 hover:border-neutral-700 hover:text-blue-300 transition-colors"
                                     >
-                                      Revisão (Em breve)
-                                    </span>
+                                      Ver Resultado
+                                    </Link>
                                   )}
 
                                   {/* Botão de Exclusão Segura */}
