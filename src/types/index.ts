@@ -290,3 +290,141 @@ export interface ListAnswerKeyVersionsParams {
 export interface ListAnswerKeyItemsParams {
   status?: OfficialAnswerKeyItemStatus | '';
 }
+
+// ============================================================================
+// Tipos para Motor de Simulados (Sprint 6)
+// ============================================================================
+
+export type SimulationStatus =
+  | 'CREATED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'EXPIRED'
+  | 'ABANDONED';
+
+export type AnswerKeySource = 'OFFICIAL_KEY' | 'QUESTION_BANK';
+
+export interface SimulationQuestionCriteria {
+  subject?: string;
+  topic?: string;
+  subtopic?: string;
+  board?: string;
+  examTitle?: string;
+  year?: number;
+  difficulty?: QuestionDifficulty;
+  type?: QuestionType;
+  examId?: string;
+}
+
+export interface SimulationAlternativeDTO {
+  id: string;
+  letter: string;
+  text: string;
+  position: number;
+}
+
+export interface SimulationCurrentAttemptDTO {
+  selectedAlternativeId: string | null;
+  selectedLetter: string | null;
+  answeredAt: string | null;
+  timeSpentSeconds: number | null;
+}
+
+export interface SimulationPublicQuestionDTO {
+  id: string;
+  simulationId: string;
+  questionId: string;
+  position: number;
+  statement: string;
+  type: QuestionType;
+  subject: string;
+  topic: string | null;
+  subtopic: string | null;
+  board: string | null;
+  examTitle: string | null;
+  year: number | null;
+  difficulty: QuestionDifficulty | null;
+  alternatives: SimulationAlternativeDTO[];
+  currentAttempt?: SimulationCurrentAttemptDTO | null;
+}
+
+export interface SimulationReviewQuestionDTO extends SimulationPublicQuestionDTO {
+  answerKeySnapshot: string | null;
+  isAnnulledSnapshot: boolean;
+  snapshotSource: AnswerKeySource;
+  officialAnswerKeyVersion: number | null;
+  explanation: string | null;
+  isCorrect: boolean | null;
+}
+
+export interface SimulationSummaryDTO {
+  id: string;
+  userId: string;
+  title: string | null;
+  status: SimulationStatus;
+  totalQuestions: number;
+  timeLimitSeconds: number | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationSeconds: number | null;
+  scorePercentage: number | null;
+  correctCount: number | null;
+  wrongCount: number | null;
+  unansweredCount: number | null;
+  createdAt: string;
+}
+
+export interface SimulationDetailDTO extends SimulationSummaryDTO {
+  timeRemainingSeconds: number | null;
+  isExpired: boolean;
+  questions: (SimulationPublicQuestionDTO | SimulationReviewQuestionDTO)[];
+}
+
+export interface SimulationResultDTO extends SimulationDetailDTO {
+  scorePercentage: number;
+  correctCount: number;
+  wrongCount: number;
+  unansweredCount: number;
+  durationSeconds: number;
+  questions: SimulationReviewQuestionDTO[];
+}
+
+export interface PublicQuestionAttemptDTO {
+  id: string;
+  simulationId: string;
+  questionId: string;
+  userId: string;
+  selectedAlternativeId: string | null;
+  selectedLetter: string | null;
+  timeSpentSeconds: number | null;
+  answeredAt: string | null;
+}
+
+export interface CreateSimulationPayload {
+  title?: string | null;
+  totalQuestions: number;
+  timeLimitSeconds?: number | null;
+  criteria?: SimulationQuestionCriteria;
+  questionIds?: string[];
+}
+
+export interface SubmitAnswerPayload {
+  questionId?: string;
+  selectedAlternativeId?: string | null;
+  timeSpentSeconds?: number | null;
+}
+
+export interface ListSimulationsParams {
+  status?: SimulationStatus;
+  limit?: number;
+  offset?: number;
+  page?: number;
+}
+
+export interface PaginatedSimulationsResponse {
+  simulations: SimulationSummaryDTO[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+

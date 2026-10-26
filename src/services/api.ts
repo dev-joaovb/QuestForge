@@ -3,22 +3,30 @@ import type {
   CreateOfficialAnswerKeyDraftPayload,
   CreateOfficialAnswerKeyItemPayload,
   CreateOrUpdateQuestionPayload,
+  CreateSimulationPayload,
   HealthApiResponse,
   ListAnswerKeyItemsParams,
   ListAnswerKeyVersionsParams,
   ListPdfDocumentsParams,
   ListQuestionsParams,
+  ListSimulationsParams,
   LoginRequestPayload,
   OfficialAnswerKeyDTO,
   OfficialAnswerKeyItemDTO,
   PaginatedPdfDocumentsResponse,
   PaginatedQuestionsResponse,
+  PaginatedSimulationsResponse,
   PdfDocumentDTO,
+  PublicQuestionAttemptDTO,
   PublishOfficialAnswerKeyPayload,
   QuestionOwnerDetailDTO,
   QuestionResponseDTO,
   RegisterRequestPayload,
   ReplaceOfficialAnswerKeyItemsPayload,
+  SimulationDetailDTO,
+  SimulationResultDTO,
+  SimulationSummaryDTO,
+  SubmitAnswerPayload,
   UpdateOfficialAnswerKeyDraftPayload,
   UpdateOfficialAnswerKeyItemPayload,
 } from '../types/index.ts';
@@ -1172,3 +1180,355 @@ export async function publishOfficialAnswerKey(
 
   return parsed.answerKey;
 }
+
+// ============================================================================
+// Funções do Cliente HTTP para Motor de Simulados (Sprint 6.6)
+// ============================================================================
+
+function isValidSimulationSummaryDTO(payload: unknown): payload is SimulationSummaryDTO {
+  if (!payload || typeof payload !== 'object') return false;
+  const sim = payload as Record<string, unknown>;
+  return (
+    typeof sim.id === 'string' &&
+    typeof sim.userId === 'string' &&
+    typeof sim.status === 'string' &&
+    typeof sim.totalQuestions === 'number' &&
+    typeof sim.createdAt === 'string'
+  );
+}
+
+function isValidSimulationDetailDTO(payload: unknown): payload is SimulationDetailDTO {
+  if (!isValidSimulationSummaryDTO(payload)) return false;
+  const sim = payload as unknown as Record<string, unknown>;
+  return typeof sim.isExpired === 'boolean' && Array.isArray(sim.questions);
+}
+
+function isValidSimulationResultDTO(payload: unknown): payload is SimulationResultDTO {
+  if (!isValidSimulationDetailDTO(payload)) return false;
+  const sim = payload as unknown as Record<string, unknown>;
+  return (
+    typeof sim.scorePercentage === 'number' &&
+    typeof sim.correctCount === 'number' &&
+    typeof sim.wrongCount === 'number' &&
+    typeof sim.unansweredCount === 'number' &&
+    typeof sim.durationSeconds === 'number'
+  );
+}
+
+function isValidPublicQuestionAttemptDTO(payload: unknown): payload is PublicQuestionAttemptDTO {
+  if (!payload || typeof payload !== 'object') return false;
+  const att = payload as Record<string, unknown>;
+  return (
+    typeof att.id === 'string' &&
+    typeof att.simulationId === 'string' &&
+    typeof att.questionId === 'string' &&
+    typeof att.userId === 'string'
+  );
+}
+
+/**
+ * Cria um novo simulado personalizado via POST /api/simulations.
+ */
+export async function createSimulation(
+  payload: CreateSimulationPayload
+): Promise<SimulationDetailDTO> {
+  const response = await fetch('/api/simulations', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível criar o simulado.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidSimulationDetailDTO(parsed.simulation)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_SIMULATION_CREATE_PAYLOAD',
+      'Resposta inesperada do servidor ao criar simulado.'
+    );
+  }
+
+  return parsed.simulation;
+}
+
+/**
+ * Lista os simulados do usuário autenticado com paginação via GET /api/simulations.
+ */
+export async function listSimulations(
+  params: ListSimulationsParams = {}
+): Promise<PaginatedSimulationsResponse> {
+  const query = new URLSearchParams();
+  if (params.status) {
+    query.set('status', params.status);
+  }
+  if (params.limit !== undefined) {
+    query.set('limit', String(params.limit));
+  }
+  if (params.offset !== undefined) {
+    query.set('offset', String(params.offset));
+  }
+  if (params.page !== undefined) {
+    query.set('page', String(params.page));
+  }
+
+  const queryString = query.toString();
+  const url = queryString ? `/api/simulations?${queryString}` : '/api/simulations';
+
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível listar os simulados.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (
+    !parsed ||
+    !Array.isArray(parsed.simulations) ||
+    typeof parsed.total !== 'number'
+  ) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_SIMULATIONS_LIST_PAYLOAD',
+      'Resposta inesperada do servidor ao listar simulados.'
+    );
+  }
+
+  return {
+    simulations: parsed.simulations as SimulationSummaryDTO[],
+    total: parsed.total,
+    limit: typeof parsed.limit === 'number' ? parsed.limit : (params.limit ?? 20),
+    offset: typeof parsed.offset === 'number' ? parsed.offset : (params.offset ?? 0),
+  };
+}
+
+/**
+ * Consulta os detalhes de um simulado específico via GET /api/simulations/:id.
+ */
+export async function getSimulation(id: string): Promise<SimulationDetailDTO> {
+  const encodedId = encodeURIComponent(id.trim());
+  const response = await fetch(`/api/simulations/${encodedId}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível carregar os dados do simulado.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidSimulationDetailDTO(parsed.simulation)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_SIMULATION_DETAIL_PAYLOAD',
+      'Resposta inesperada do servidor ao consultar simulado.'
+    );
+  }
+
+  return parsed.simulation;
+}
+
+/**
+ * Inicia a contagem oficial de tempo do simulado no servidor via POST /api/simulations/:id/start.
+ */
+export async function startSimulation(id: string): Promise<SimulationDetailDTO> {
+  const encodedId = encodeURIComponent(id.trim());
+  const response = await fetch(`/api/simulations/${encodedId}/start`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível iniciar o simulado.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidSimulationDetailDTO(parsed.simulation)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_SIMULATION_START_PAYLOAD',
+      'Resposta inesperada do servidor ao iniciar simulado.'
+    );
+  }
+
+  return parsed.simulation;
+}
+
+/**
+ * Registra ou atualiza a resposta do usuário a uma questão do simulado via POST /api/simulations/:id/answers.
+ * Suporta resposta em branco preservando selectedAlternativeId como null.
+ */
+export async function submitSimulationAnswer(
+  simulationId: string,
+  questionId: string,
+  selectedAlternativeId: string | null,
+  timeSpentSeconds?: number | null
+): Promise<PublicQuestionAttemptDTO> {
+  const encodedId = encodeURIComponent(simulationId.trim());
+  const payload: Record<string, unknown> = {
+    questionId: questionId.trim(),
+    selectedAlternativeId: selectedAlternativeId,
+  };
+
+  if (timeSpentSeconds !== undefined) {
+    payload.timeSpentSeconds = timeSpentSeconds;
+  }
+
+  const response = await fetch(`/api/simulations/${encodedId}/answers`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível registrar a resposta no simulado.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidPublicQuestionAttemptDTO(parsed.attempt)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_SIMULATION_ANSWER_PAYLOAD',
+      'Resposta inesperada do servidor ao registrar resposta.'
+    );
+  }
+
+  return parsed.attempt;
+}
+
+/**
+ * Finaliza o simulado e calcula nota e contadores oficiais no servidor via POST /api/simulations/:id/finish.
+ */
+export async function finishSimulation(id: string): Promise<SimulationResultDTO> {
+  const encodedId = encodeURIComponent(id.trim());
+  const response = await fetch(`/api/simulations/${encodedId}/finish`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível finalizar o simulado.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidSimulationResultDTO(parsed.result)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_SIMULATION_RESULT_PAYLOAD',
+      'Resposta inesperada do servidor ao finalizar simulado.'
+    );
+  }
+
+  return parsed.result;
+}
+
+/**
+ * Abandona o simulado em andamento via POST /api/simulations/:id/abandon.
+ */
+export async function abandonSimulation(id: string): Promise<SimulationSummaryDTO> {
+  const encodedId = encodeURIComponent(id.trim());
+  const response = await fetch(`/api/simulations/${encodedId}/abandon`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível abandonar o simulado.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (!parsed || !isValidSimulationSummaryDTO(parsed.simulation)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_SIMULATION_ABANDON_PAYLOAD',
+      'Resposta inesperada do servidor ao abandonar simulado.'
+    );
+  }
+
+  return parsed.simulation;
+}
+
+/**
+ * Exclui atomicamente um simulado via DELETE /api/simulations/:id.
+ */
+export async function deleteSimulation(id: string): Promise<{ message: string }> {
+  const encodedId = encodeURIComponent(id.trim());
+  const response = await fetch(`/api/simulations/${encodedId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    },
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível excluir o simulado.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  return {
+    message:
+      typeof parsed?.message === 'string'
+        ? parsed.message
+        : 'Simulado excluído com sucesso.',
+  };
+}
+
