@@ -8,6 +8,7 @@ import type {
 import {
   PrismaSimulationRepository,
   type ISimulationRepository,
+  type SimulationTransactionContext,
 } from '../repositories/simulation.repository.ts';
 import {
   PrismaQuestionAttemptRepository,
@@ -22,6 +23,17 @@ import {
   PrismaOfficialAnswerKeyRepository,
   type IOfficialAnswerKeyRepository,
 } from '../repositories/official-answer-key.repository.ts';
+import {
+  MockStudyActivityRepository,
+  PrismaStudyActivityRepository,
+  type IStudyActivityRepository,
+} from '../repositories/study-activity.repository.ts';
+import {
+  MockUserStreakRepository,
+  PrismaUserStreakRepository,
+  type IUserStreakRepository,
+} from '../repositories/user-streak.repository.ts';
+import { StudyActivityService } from './study-activity.service.ts';
 import {
   SimulationDomainError,
   type CreateSimulationQuestionInput,
@@ -45,6 +57,9 @@ export interface SimulationServiceDependencies {
   questionAttemptRepository?: IQuestionAttemptRepository;
   questionRepository?: IQuestionRepository;
   officialAnswerKeyRepository?: IOfficialAnswerKeyRepository;
+  studyActivityRepository?: IStudyActivityRepository;
+  userStreakRepository?: IUserStreakRepository;
+  studyActivityService?: StudyActivityService;
 }
 
 interface ResolvedQuestionSnapshot {
@@ -71,6 +86,9 @@ export class SimulationService {
   private readonly questionAttemptRepository: IQuestionAttemptRepository;
   private readonly questionRepository: IQuestionRepository;
   private readonly officialAnswerKeyRepository: IOfficialAnswerKeyRepository;
+  private readonly studyActivityRepository: IStudyActivityRepository;
+  private readonly userStreakRepository: IUserStreakRepository;
+  private readonly studyActivityService: StudyActivityService;
 
   constructor(deps: SimulationServiceDependencies = {}) {
     this.simulationRepository =
@@ -81,6 +99,24 @@ export class SimulationService {
       deps.questionRepository ?? new PrismaQuestionRepository();
     this.officialAnswerKeyRepository =
       deps.officialAnswerKeyRepository ?? new PrismaOfficialAnswerKeyRepository();
+    this.studyActivityRepository =
+      deps.studyActivityRepository ??
+      (!process.env.DATABASE_URL
+        ? new MockStudyActivityRepository()
+        : new PrismaStudyActivityRepository());
+    this.userStreakRepository =
+      deps.userStreakRepository ??
+      (!process.env.DATABASE_URL
+        ? new MockUserStreakRepository()
+        : new PrismaUserStreakRepository());
+    this.studyActivityService =
+      deps.studyActivityService ??
+      new StudyActivityService({
+        studyActivityRepository: this.studyActivityRepository,
+        userStreakRepository: this.userStreakRepository,
+        simulationRepository: this.simulationRepository,
+        questionRepository: this.questionRepository,
+      });
   }
 
   private assertValidActorUserId(actorUserId: string): string {
@@ -114,7 +150,8 @@ export class SimulationService {
     userId: string,
     action: (
       txSimRepo: ISimulationRepository,
-      txAttemptRepo: IQuestionAttemptRepository
+      txAttemptRepo: IQuestionAttemptRepository,
+      txContext?: SimulationTransactionContext
     ) => Promise<T>
   ): Promise<T> {
     return this.simulationRepository.executeInSimulationLock(
@@ -136,9 +173,12 @@ export class SimulationService {
       return { isExpired: false, timeRemainingSeconds: simulation.timeLimitSeconds };
     }
 
-    const elapsedSeconds = Math.floor(
-      (Date.now() - simulation.startedAt.getTime()) / 1000
-    );
+    const startedTime =
+      simulation.startedAt instanceof Date
+        ? simulation.startedAt.getTime()
+        : new Date(simulation.startedAt).getTime();
+
+    const elapsedSeconds = Math.floor((Date.now() - startedTime) / 1000);
     const timeRemainingSeconds = Math.max(0, simulation.timeLimitSeconds - elapsedSeconds);
     const isExpired = elapsedSeconds >= simulation.timeLimitSeconds;
 
@@ -539,12 +579,12 @@ export class SimulationService {
     if (simulation.status === 'IN_PROGRESS') {
       const { isExpired } = this.calculateTimer(simulation);
       if (isExpired) {
-        const finalized = await this.withSimulationLock(validSimId, validUserId, async (txSimRepo) => {
+        const finalized = await this.withSimulationLock(validSimId, validUserId, async (txSimRepo, _txAttemptRepo, txContext) => {
           const fullSim = await txSimRepo.findByIdWithFullDetails(validSimId, validUserId);
           if (!fullSim || fullSim.status === 'COMPLETED' || fullSim.status === 'EXPIRED') {
             return fullSim ?? simulation;
           }
-          await this.finalizeInternalWithRepo(fullSim, validUserId, 'EXPIRED', txSimRepo);
+          await this.finalizeInternalWithRepo(fullSim, validUserId, 'EXPIRED', txSimRepo, txContext);
           fullSim.status = 'EXPIRED';
           return fullSim;
         });
@@ -568,7 +608,7 @@ export class SimulationService {
     const validSimId = this.assertValidId(request.simulationId, 'simulationId');
     const validQId = this.assertValidId(request.questionId, 'questionId');
 
-    return this.withSimulationLock(validSimId, validUserId, async (txSimRepo, txAttemptRepo) => {
+    return this.withSimulationLock(validSimId, validUserId, async (txSimRepo, txAttemptRepo, txContext) => {
       const simulation = await txSimRepo.findByIdWithQuestions(
         validSimId,
         validUserId
@@ -632,13 +672,14 @@ export class SimulationService {
           validUserId
         );
         if (fullSim) {
-          await this.finalizeInternalWithRepo(fullSim, validUserId, 'EXPIRED', txSimRepo);
+          await this.finalizeInternalWithRepo(fullSim, validUserId, 'EXPIRED', txSimRepo, txContext);
         } else {
           await this.finalizeInternalWithRepo(
             { ...simulation, attempts: [] },
             validUserId,
             'EXPIRED',
-            txSimRepo
+            txSimRepo,
+            txContext
           );
         }
         throw new SimulationDomainError(
@@ -739,7 +780,7 @@ export class SimulationService {
     const validUserId = this.assertValidActorUserId(actorUserId);
     const validSimId = this.assertValidId(simulationId, 'simulationId');
 
-    return this.withSimulationLock(validSimId, validUserId, async (txSimRepo) => {
+    return this.withSimulationLock(validSimId, validUserId, async (txSimRepo, _txAttemptRepo, txContext) => {
       const simulation = await txSimRepo.findByIdWithFullDetails(
         validSimId,
         validUserId
@@ -769,7 +810,13 @@ export class SimulationService {
       const { isExpired } = this.calculateTimer(simulation);
       const targetStatus = isExpired ? 'EXPIRED' : 'COMPLETED';
 
-      return this.finalizeInternalWithRepo(simulation, validUserId, targetStatus, txSimRepo);
+      return this.finalizeInternalWithRepo(
+        simulation,
+        validUserId,
+        targetStatus,
+        txSimRepo,
+        txContext
+      );
     });
   }
 
@@ -779,13 +826,15 @@ export class SimulationService {
   private async finalizeInternal(
     simulation: SimulationWithFullDetails,
     actorUserId: string,
-    targetStatus: 'COMPLETED' | 'EXPIRED'
+    targetStatus: 'COMPLETED' | 'EXPIRED',
+    txContext?: SimulationTransactionContext
   ): Promise<SimulationResultDTO> {
     return this.finalizeInternalWithRepo(
       simulation,
       actorUserId,
       targetStatus,
-      this.simulationRepository
+      this.simulationRepository,
+      txContext
     );
   }
 
@@ -793,7 +842,8 @@ export class SimulationService {
     simulation: SimulationWithFullDetails,
     actorUserId: string,
     targetStatus: 'COMPLETED' | 'EXPIRED',
-    repo: ISimulationRepository
+    repo: ISimulationRepository,
+    txContext?: SimulationTransactionContext
   ): Promise<SimulationResultDTO> {
     const attemptsMap = new Map<string, QuestionAttemptWithAlternative>();
     for (const att of simulation.attempts) {
@@ -835,9 +885,13 @@ export class SimulationService {
     const finishedAt = new Date();
     let durationSeconds = 0;
     if (simulation.startedAt) {
+      const startedTime =
+        simulation.startedAt instanceof Date
+          ? simulation.startedAt.getTime()
+          : new Date(simulation.startedAt).getTime();
       const elapsed = Math.max(
         0,
-        Math.round((finishedAt.getTime() - simulation.startedAt.getTime()) / 1000)
+        Math.round((finishedAt.getTime() - startedTime) / 1000)
       );
       if (simulation.timeLimitSeconds && elapsed > simulation.timeLimitSeconds) {
         durationSeconds = simulation.timeLimitSeconds;
@@ -894,6 +948,56 @@ export class SimulationService {
       wrongCount,
       unansweredCount,
     });
+
+    // Registro de atividade de estudo e avanço de streak
+    // Regra da Sprint 7.1:
+    // - COMPLETED sempre gera atividade e avança streak
+    // - EXPIRED gera atividade e avança streak somente se o estudante respondeu ao menos uma questão
+    const hasAnyAnswer = simulation.attempts.some(
+      (a) =>
+        a.selectedAlternativeId !== null &&
+        a.selectedAlternativeId !== undefined &&
+        a.selectedAlternativeId.trim() !== ''
+    );
+
+    const shouldRecordActivity =
+      targetStatus === 'COMPLETED' ||
+      (targetStatus === 'EXPIRED' && hasAnyAnswer);
+
+    if (shouldRecordActivity) {
+      const txActivityRepo =
+        txContext?.studyActivityRepo ?? this.studyActivityRepository;
+      const txStreakRepo =
+        txContext?.userStreakRepo ?? this.userStreakRepository;
+
+      try {
+        await this.studyActivityService.recordActivity(
+          {
+            userId: actorUserId,
+            type: 'SIMULATION',
+            simulationId: simulation.id,
+            durationSeconds,
+            scorePercentage,
+            correctCount,
+            wrongCount,
+            unansweredCount,
+            completedAt: finishedAt,
+            skipResourceValidation: true,
+          },
+          {
+            studyActivityRepo: txActivityRepo,
+            userStreakRepo: txStreakRepo,
+          }
+        );
+      } catch (activityError) {
+        logger.error('failed_to_record_study_activity_in_simulation_finalization', {
+          simulationId: simulation.id,
+          userId: actorUserId,
+          error: activityError,
+        });
+        throw activityError;
+      }
+    }
 
     return this.toSimulationResultDTO(simulation);
   }

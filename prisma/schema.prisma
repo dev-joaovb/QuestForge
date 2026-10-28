@@ -1,8 +1,9 @@
 // ============================================================================
-// QUESTFORGE — PRISMA SCHEMA (SPRINT 5: GABARITOS OFICIAIS)
+// QUESTFORGE — PRISMA SCHEMA (SPRINT 7.1: MODELAGEM E NÚCLEO DE STREAK)
 // ============================================================================
 // Modelos ativos: User, UserSession, Exam, Question, Alternative,
-// PdfDocument, OfficialAnswerKey, OfficialAnswerKeyItem.
+// PdfDocument, OfficialAnswerKey, OfficialAnswerKeyItem,
+// Simulation, SimulationQuestion, QuestionAttempt, StudyActivity, UserStreak.
 // ============================================================================
 
 generator client {
@@ -93,6 +94,8 @@ model User {
   officialAnswerKeys OfficialAnswerKey[]
   simulations        Simulation[]
   questionAttempts   QuestionAttempt[]
+  studyActivities    StudyActivity[]
+  streak             UserStreak?
 
   @@map("users")
 }
@@ -128,6 +131,7 @@ model Exam {
   questions          Question[]
   pdfDocuments       PdfDocument[]
   officialAnswerKeys OfficialAnswerKey[]
+  studyActivities    StudyActivity[]
 
   @@index([userId])
   @@index([board])
@@ -194,6 +198,7 @@ model Question {
   answerKeyItems      OfficialAnswerKeyItem[]
   simulationQuestions SimulationQuestion[]
   questionAttempts    QuestionAttempt[]
+  studyActivities     StudyActivity[]
 
   @@index([userId, createdAt])
   @@index([userId, subject])
@@ -291,6 +296,7 @@ model Simulation {
   user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   questions        SimulationQuestion[]
   attempts         QuestionAttempt[]
+  studyActivity    StudyActivity?
 
   @@index([userId, status])
   @@index([userId, createdAt])
@@ -344,3 +350,52 @@ model QuestionAttempt {
   @@index([questionId])
   @@map("question_attempts")
 }
+
+enum StudyActivityType {
+  QUESTION
+  SIMULATION
+  EXAM
+}
+
+model StudyActivity {
+  id               String            @id @default(uuid())
+  userId           String
+  type             StudyActivityType
+  simulationId     String?           @unique
+  questionId       String?
+  examId           String?
+  durationSeconds  Int?
+  scorePercentage  Float?
+  correctCount     Int?
+  wrongCount       Int?
+  unansweredCount  Int?
+  completedAt      DateTime          @default(now())
+  createdAt        DateTime          @default(now())
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  simulation       Simulation?       @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  question         Question?         @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  exam             Exam?             @relation(fields: [examId], references: [id], onDelete: SetNull)
+
+  @@index([userId, completedAt])
+  @@index([userId, type])
+  @@index([questionId])
+  @@index([examId])
+  @@map("study_activities")
+}
+
+model UserStreak {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  currentStreak    Int      @default(0)
+  longestStreak    Int      @default(0)
+  lastActivityDate String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_streaks")
+}
+

@@ -19,6 +19,19 @@ import {
   PrismaQuestionAttemptRepository,
   type IQuestionAttemptRepository,
 } from './question-attempt.repository.ts';
+import {
+  PrismaStudyActivityRepository,
+  type IStudyActivityRepository,
+} from './study-activity.repository.ts';
+import {
+  PrismaUserStreakRepository,
+  type IUserStreakRepository,
+} from './user-streak.repository.ts';
+
+export interface SimulationTransactionContext {
+  studyActivityRepo?: IStudyActivityRepository;
+  userStreakRepo?: IUserStreakRepository;
+}
 
 function isPrismaUniqueConstraintError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
@@ -82,7 +95,8 @@ export interface ISimulationRepository {
     userId: string,
     action: (
       txSimulationRepo: ISimulationRepository,
-      txAttemptRepo: IQuestionAttemptRepository
+      txAttemptRepo: IQuestionAttemptRepository,
+      txContext?: SimulationTransactionContext
     ) => Promise<T>
   ): Promise<T>;
 }
@@ -382,13 +396,14 @@ export class PrismaSimulationRepository implements ISimulationRepository {
     userId: string,
     action: (
       txSimulationRepo: ISimulationRepository,
-      txAttemptRepo: IQuestionAttemptRepository
+      txAttemptRepo: IQuestionAttemptRepository,
+      txContext?: SimulationTransactionContext
     ) => Promise<T>
   ): Promise<T> {
     const prisma = this.prismaGetter();
 
     const runInTx = async (tx: Prisma.TransactionClient) => {
-      // Adquire bloqueio exclusivo de linha (row lock) no PostgreSQL
+      // Adquire bloqueio exclusivo de linha (row lock) sobre o simulado no PostgreSQL
       // Tabela física: "simulations" conforme @@map("simulations")
       // Colunas: "id", "userId" conforme schema e migration 20261015120000_add_simulations_engine
       await tx.$queryRaw`
@@ -399,8 +414,13 @@ export class PrismaSimulationRepository implements ISimulationRepository {
 
       const txSimRepo = new PrismaSimulationRepository(tx);
       const txAttemptRepo = new PrismaQuestionAttemptRepository(tx);
+      const txActivityRepo = new PrismaStudyActivityRepository(tx);
+      const txStreakRepo = new PrismaUserStreakRepository(tx);
 
-      return action(txSimRepo, txAttemptRepo);
+      return action(txSimRepo, txAttemptRepo, {
+        studyActivityRepo: txActivityRepo,
+        userStreakRepo: txStreakRepo,
+      });
     };
 
     if ('$transaction' in prisma && typeof (prisma as PrismaClient).$transaction === 'function') {
