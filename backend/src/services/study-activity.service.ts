@@ -4,6 +4,9 @@ import {
   type IUserStreakRepository,
   type RecordStudyActivityInput,
   type RecordActivityOutput,
+  type ListStudyActivitiesOptions,
+  type PaginatedStudyActivitiesDTO,
+  type StudyActivityDTO,
   StudyActivityDomainError,
 } from '../types/activity.types.ts';
 import { PrismaStudyActivityRepository } from '../repositories/study-activity.repository.ts';
@@ -266,5 +269,64 @@ export class StudyActivityService {
     );
 
     return { activity, streak, transition, wasCreated: true };
+  }
+
+  /**
+   * Consulta o histórico paginado de atividades de estudo do usuário autenticado.
+   * Aplica filtros de tipo e intervalo de datas tanto na listagem quanto na contagem total.
+   */
+  async listUserActivities(
+    userId: string,
+    options: ListStudyActivitiesOptions
+  ): Promise<PaginatedStudyActivitiesDTO> {
+    const cleanId = userId?.trim();
+    if (!cleanId) {
+      throw new StudyActivityDomainError(
+        'INVALID_USER_ID',
+        'Identificador de usuário obrigatório para consulta de histórico de atividades.',
+        400
+      );
+    }
+
+    const limit = Math.max(1, Math.min(100, options.limit ?? 20));
+    const offset = Math.max(0, options.offset ?? 0);
+
+    const [total, items] = await Promise.all([
+      this.studyActivityRepository.countByUser(cleanId, {
+        type: options.type,
+        startDate: options.startDate,
+        endDate: options.endDate,
+      }),
+      this.studyActivityRepository.findManyByUser(cleanId, {
+        limit,
+        offset,
+        type: options.type,
+        startDate: options.startDate,
+        endDate: options.endDate,
+      }),
+    ]);
+
+    const activities: StudyActivityDTO[] = items.map((item) => ({
+      id: item.id,
+      userId: item.userId,
+      type: item.type,
+      simulationId: item.simulationId,
+      questionId: item.questionId,
+      examId: item.examId,
+      durationSeconds: item.durationSeconds,
+      scorePercentage: item.scorePercentage,
+      correctCount: item.correctCount,
+      wrongCount: item.wrongCount,
+      unansweredCount: item.unansweredCount,
+      completedAt: item.completedAt,
+      createdAt: item.createdAt,
+    }));
+
+    return {
+      activities,
+      total,
+      limit,
+      offset,
+    };
   }
 }

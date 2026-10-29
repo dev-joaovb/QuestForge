@@ -428,3 +428,46 @@ export interface PaginatedSimulationsResponse {
   offset: number;
 }
 
+export type StudyActivityType = 'QUESTION' | 'SIMULATION' | 'EXAM';
+
+export interface StudyActivityDTO {
+  id: string;
+  userId: string;
+  type: StudyActivityType;
+  simulationId: string | null;
+  questionId: string | null;
+  examId: string | null;
+  durationSeconds: number | null;
+  scorePercentage: number | null;
+  correctCount: number | null;
+  wrongCount: number | null;
+  unansweredCount: number | null;
+  completedAt: string;
+  createdAt: string;
+}
+
+export interface UserStreakDTO {
+  id: string;
+  userId: string;
+  currentStreak: number;
+  longestStreak: number;
+  lastActivityDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListStudyActivitiesParams {
+  limit?: number;
+  offset?: number;
+  type?: StudyActivityType;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface PaginatedStudyActivitiesResponse {
+  activities: StudyActivityDTO[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+

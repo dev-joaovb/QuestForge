@@ -4,10 +4,12 @@ import {
   type IStudyActivityRepository,
   type RecordStudyActivityInput,
   type CreateActivityResult,
+  type ListStudyActivitiesOptions,
+  type StudyActivityType,
   StudyActivityDomainError,
 } from '../types/activity.types.ts';
 
-export type { IStudyActivityRepository, CreateActivityResult };
+export type { IStudyActivityRepository, CreateActivityResult, ListStudyActivitiesOptions };
 
 export class PrismaStudyActivityRepository implements IStudyActivityRepository {
   private readonly clientGetter: () => PrismaClient | Prisma.TransactionClient;
@@ -68,12 +70,59 @@ export class PrismaStudyActivityRepository implements IStudyActivityRepository {
     });
   }
 
-  async findByUser(userId: string, limit = 50): Promise<StudyActivity[]> {
+  async findManyByUser(
+    userId: string,
+    options: ListStudyActivitiesOptions
+  ): Promise<StudyActivity[]> {
+    const where: Prisma.StudyActivityWhereInput = { userId };
+
+    if (options.type) {
+      where.type = options.type;
+    }
+
+    if (options.startDate || options.endDate) {
+      where.completedAt = {};
+      if (options.startDate) {
+        where.completedAt.gte = options.startDate;
+      }
+      if (options.endDate) {
+        where.completedAt.lte = options.endDate;
+      }
+    }
+
     return this.client.studyActivity.findMany({
-      where: { userId },
-      orderBy: { completedAt: 'desc' },
-      take: Math.max(1, Math.min(100, limit)),
+      where,
+      orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
+      take: Math.max(1, Math.min(100, options.limit)),
+      skip: Math.max(0, options.offset),
     });
+  }
+
+  async countByUser(
+    userId: string,
+    filter?: { type?: StudyActivityType; startDate?: Date; endDate?: Date }
+  ): Promise<number> {
+    const where: Prisma.StudyActivityWhereInput = { userId };
+
+    if (filter?.type) {
+      where.type = filter.type;
+    }
+
+    if (filter?.startDate || filter?.endDate) {
+      where.completedAt = {};
+      if (filter.startDate) {
+        where.completedAt.gte = filter.startDate;
+      }
+      if (filter.endDate) {
+        where.completedAt.lte = filter.endDate;
+      }
+    }
+
+    return this.client.studyActivity.count({ where });
+  }
+
+  async findByUser(userId: string, limit = 50): Promise<StudyActivity[]> {
+    return this.findManyByUser(userId, { limit, offset: 0 });
   }
 }
 
@@ -119,10 +168,40 @@ export class MockStudyActivityRepository implements IStudyActivityRepository {
     return this.activities.find((a) => a.id === id) ?? null;
   }
 
-  async findByUser(userId: string, limit = 50): Promise<StudyActivity[]> {
+  async findManyByUser(
+    userId: string,
+    options: ListStudyActivitiesOptions
+  ): Promise<StudyActivity[]> {
     return this.activities
-      .filter((a) => a.userId === userId)
-      .sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime())
-      .slice(0, limit);
+      .filter((a) => {
+        if (a.userId !== userId) return false;
+        if (options.type && a.type !== options.type) return false;
+        if (options.startDate && a.completedAt.getTime() < options.startDate.getTime()) return false;
+        if (options.endDate && a.completedAt.getTime() > options.endDate.getTime()) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const timeDiff = b.completedAt.getTime() - a.completedAt.getTime();
+        if (timeDiff !== 0) return timeDiff;
+        return b.id.localeCompare(a.id);
+      })
+      .slice(options.offset, options.offset + Math.max(1, Math.min(100, options.limit)));
+  }
+
+  async countByUser(
+    userId: string,
+    filter?: { type?: StudyActivityType; startDate?: Date; endDate?: Date }
+  ): Promise<number> {
+    return this.activities.filter((a) => {
+      if (a.userId !== userId) return false;
+      if (filter?.type && a.type !== filter.type) return false;
+      if (filter?.startDate && a.completedAt.getTime() < filter.startDate.getTime()) return false;
+      if (filter?.endDate && a.completedAt.getTime() > filter.endDate.getTime()) return false;
+      return true;
+    }).length;
+  }
+
+  async findByUser(userId: string, limit = 50): Promise<StudyActivity[]> {
+    return this.findManyByUser(userId, { limit, offset: 0 });
   }
 }

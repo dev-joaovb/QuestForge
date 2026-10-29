@@ -2,6 +2,7 @@ import type { UserStreak } from '@prisma/client';
 import {
   type IUserStreakRepository,
   type StreakTransitionResult,
+  type UserStreakDTO,
   StudyActivityDomainError,
 } from '../types/activity.types.ts';
 import {
@@ -176,5 +177,44 @@ export class StreakService {
     });
 
     return { streak: updated, transition };
+  }
+
+  /**
+   * Consulta o streak atual do usuário.
+   * Se o usuário ainda não possuir atividades, retorna HTTP 200 com zeros estruturados.
+   */
+  public async getUserStreak(userId: string): Promise<UserStreakDTO> {
+    const cleanId = userId?.trim();
+    if (!cleanId) {
+      throw new StudyActivityDomainError(
+        'INVALID_USER_ID',
+        'Identificador de usuário obrigatório para consulta de streak.',
+        400
+      );
+    }
+
+    const record = await this.userStreakRepository.findByUserId(cleanId);
+    if (!record) {
+      const now = new Date();
+      return {
+        id: '',
+        userId: cleanId,
+        currentStreak: 0,
+        longestStreak: 0,
+        lastActivityDate: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    return {
+      id: record.id,
+      userId: record.userId,
+      currentStreak: record.currentStreak,
+      longestStreak: record.longestStreak,
+      lastActivityDate: record.lastActivityDate,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    };
   }
 }

@@ -12,10 +12,12 @@ import type {
   ListSimulationsParams,
   LoginRequestPayload,
   OfficialAnswerKeyDTO,
+  ListStudyActivitiesParams,
   OfficialAnswerKeyItemDTO,
   PaginatedPdfDocumentsResponse,
   PaginatedQuestionsResponse,
   PaginatedSimulationsResponse,
+  PaginatedStudyActivitiesResponse,
   PdfDocumentDTO,
   PublicQuestionAttemptDTO,
   PublishOfficialAnswerKeyPayload,
@@ -26,9 +28,11 @@ import type {
   SimulationDetailDTO,
   SimulationResultDTO,
   SimulationSummaryDTO,
+  StudyActivityDTO,
   SubmitAnswerPayload,
   UpdateOfficialAnswerKeyDraftPayload,
   UpdateOfficialAnswerKeyItemPayload,
+  UserStreakDTO,
 } from '../types/index.ts';
 
 export const CSRF_HEADER_NAME = 'X-Requested-With';
@@ -1529,6 +1533,111 @@ export async function deleteSimulation(id: string): Promise<{ message: string }>
       typeof parsed?.message === 'string'
         ? parsed.message
         : 'Simulado excluído com sucesso.',
+  };
+}
+
+function isValidUserStreakDTO(payload: unknown): payload is UserStreakDTO {
+  if (!payload || typeof payload !== 'object') return false;
+  const c = payload as Record<string, unknown>;
+  return (
+    typeof c.currentStreak === 'number' &&
+    typeof c.longestStreak === 'number' &&
+    (c.lastActivityDate === null || typeof c.lastActivityDate === 'string')
+  );
+}
+
+/**
+ * Consulta os dados de streak do usuário autenticado via GET /api/activities/streak.
+ */
+export async function getUserStreak(): Promise<UserStreakDTO> {
+  const response = await fetch('/api/activities/streak', {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível consultar o streak do estudante.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  const streak = parsed?.streak ?? parsed;
+  if (!isValidUserStreakDTO(streak)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_STREAK_PAYLOAD',
+      'Resposta inesperada do servidor ao consultar streak.'
+    );
+  }
+
+  return streak;
+}
+
+/**
+ * Consulta o histórico paginado de atividades do usuário autenticado via GET /api/activities.
+ */
+export async function listStudyActivities(
+  params: ListStudyActivitiesParams = {}
+): Promise<PaginatedStudyActivitiesResponse> {
+  const searchParams = new URLSearchParams();
+
+  if (params.limit !== undefined) {
+    searchParams.set('limit', String(params.limit));
+  }
+  if (params.offset !== undefined) {
+    searchParams.set('offset', String(params.offset));
+  }
+  if (params.type) {
+    searchParams.set('type', params.type);
+  }
+  if (params.startDate) {
+    searchParams.set('startDate', params.startDate);
+  }
+  if (params.endDate) {
+    searchParams.set('endDate', params.endDate);
+  }
+
+  const query = searchParams.toString();
+  const url = query ? `/api/activities?${query}` : '/api/activities';
+
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível consultar o histórico de atividades.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as Record<string, unknown>;
+  if (
+    !parsed ||
+    !Array.isArray(parsed.activities) ||
+    typeof parsed.total !== 'number'
+  ) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_ACTIVITIES_LIST_PAYLOAD',
+      'Resposta inesperada do servidor ao listar histórico de atividades.'
+    );
+  }
+
+  return {
+    activities: parsed.activities as StudyActivityDTO[],
+    total: parsed.total,
+    limit: typeof parsed.limit === 'number' ? parsed.limit : (params.limit ?? 20),
+    offset: typeof parsed.offset === 'number' ? parsed.offset : (params.offset ?? 0),
   };
 }
 

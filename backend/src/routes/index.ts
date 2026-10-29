@@ -17,6 +17,10 @@ import {
   createSimulationRouter,
   type SimulationRouterDependencies,
 } from './simulation.routes.ts';
+import {
+  createStudyActivityRouter,
+  type StudyActivityRouterDependencies,
+} from './activity.routes.ts';
 
 export interface ApiRouterDependencies {
   health?: HealthCheckDependencies;
@@ -25,6 +29,7 @@ export interface ApiRouterDependencies {
   documents?: PdfDocumentRouterDependencies;
   officialAnswerKeys?: OfficialAnswerKeyRouterDependencies;
   simulations?: SimulationRouterDependencies;
+  activities?: StudyActivityRouterDependencies;
 }
 
 export function createApiRouter(deps?: ApiRouterDependencies): Router {
@@ -67,6 +72,14 @@ export function createApiRouter(deps?: ApiRouterDependencies): Router {
     createSimulationRouter({
       authService: deps?.simulations?.authService ?? deps?.auth?.authService,
       simulationService: deps?.simulations?.simulationService,
+    })
+  );
+  apiRouter.use(
+    '/activities',
+    createStudyActivityRouter({
+      authService: deps?.activities?.authService ?? deps?.auth?.authService,
+      studyActivityService: deps?.activities?.studyActivityService,
+      streakService: deps?.activities?.streakService,
     })
   );
 

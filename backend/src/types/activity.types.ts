@@ -89,11 +89,31 @@ export interface RecordActivityOutput {
   wasCreated: boolean;
 }
 
+export interface ListStudyActivitiesOptions {
+  limit: number;
+  offset: number;
+  type?: StudyActivityType;
+  startDate?: Date;
+  endDate?: Date;
+}
+
+export interface PaginatedStudyActivitiesDTO {
+  activities: StudyActivityDTO[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface IStudyActivityRepository {
   create(data: RecordStudyActivityInput): Promise<CreateActivityResult>;
   findBySimulationId(simulationId: string): Promise<StudyActivity | null>;
   findById(id: string): Promise<StudyActivity | null>;
   findByUser(userId: string, limit?: number): Promise<StudyActivity[]>;
+  findManyByUser(userId: string, options: ListStudyActivitiesOptions): Promise<StudyActivity[]>;
+  countByUser(
+    userId: string,
+    filter?: { type?: StudyActivityType; startDate?: Date; endDate?: Date }
+  ): Promise<number>;
 }
 
 export interface IUserStreakRepository {
