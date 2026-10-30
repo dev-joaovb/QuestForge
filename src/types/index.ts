@@ -471,3 +471,32 @@ export interface PaginatedStudyActivitiesResponse {
   offset: number;
 }
 
+// ============================================================================
+// Tipos para Dashboard do Estudante (Sprint 8)
+// ============================================================================
+
+export interface SimulationEvolutionPointDTO {
+  id: string;
+  title: string | null;
+  scorePercentage: number | null;
+  correctCount: number;
+  wrongCount: number;
+  totalQuestions: number;
+  durationSeconds: number | null;
+  finishedAt: string | null;
+}
+
+export interface DashboardSummaryDTO {
+  completedSimulationsCount: number;
+  totalAnsweredQuestions: number;
+  totalCorrectAnswers: number;
+  totalWrongAnswers: number;
+  accuracyPercentage: number;
+  totalDurationSeconds: number;
+  currentStreak: number;
+  longestStreak: number;
+  lastActivityDate: string | null;
+  recentSimulationsEvolution: SimulationEvolutionPointDTO[];
+  recentActivities: StudyActivityDTO[];
+}
+

@@ -19,6 +19,7 @@ import { SimulationsListPage } from './pages/SimulationsListPage.tsx';
 import { SimulationCreatePage } from './pages/SimulationCreatePage.tsx';
 import { SimulationPlayPage } from './pages/SimulationPlayPage.tsx';
 import { SimulationResultPage } from './pages/SimulationResultPage.tsx';
+import { DashboardPage } from './pages/DashboardPage.tsx';
 
 export function AppRoutes() {
   return (
@@ -29,6 +30,7 @@ export function AppRoutes() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/questions" element={<QuestionsListPage />} />
         <Route path="/questions/new" element={<QuestionFormPage mode="create" />} />
         <Route path="/questions/:id" element={<QuestionDetailPage />} />

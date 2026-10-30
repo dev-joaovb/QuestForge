@@ -21,6 +21,10 @@ import {
   createStudyActivityRouter,
   type StudyActivityRouterDependencies,
 } from './activity.routes.ts';
+import {
+  createDashboardRouter,
+  type DashboardRouterDependencies,
+} from './dashboard.routes.ts';
 
 export interface ApiRouterDependencies {
   health?: HealthCheckDependencies;
@@ -30,6 +34,7 @@ export interface ApiRouterDependencies {
   officialAnswerKeys?: OfficialAnswerKeyRouterDependencies;
   simulations?: SimulationRouterDependencies;
   activities?: StudyActivityRouterDependencies;
+  dashboard?: DashboardRouterDependencies;
 }
 
 export function createApiRouter(deps?: ApiRouterDependencies): Router {
@@ -80,6 +85,13 @@ export function createApiRouter(deps?: ApiRouterDependencies): Router {
       authService: deps?.activities?.authService ?? deps?.auth?.authService,
       studyActivityService: deps?.activities?.studyActivityService,
       streakService: deps?.activities?.streakService,
+    })
+  );
+  apiRouter.use(
+    '/dashboard',
+    createDashboardRouter({
+      authService: deps?.dashboard?.authService ?? deps?.auth?.authService,
+      dashboardService: deps?.dashboard?.dashboardService,
     })
   );
 

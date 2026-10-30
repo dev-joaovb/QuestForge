@@ -4,6 +4,7 @@ import type {
   CreateOfficialAnswerKeyItemPayload,
   CreateOrUpdateQuestionPayload,
   CreateSimulationPayload,
+  DashboardSummaryDTO,
   HealthApiResponse,
   ListAnswerKeyItemsParams,
   ListAnswerKeyVersionsParams,
@@ -26,6 +27,7 @@ import type {
   RegisterRequestPayload,
   ReplaceOfficialAnswerKeyItemsPayload,
   SimulationDetailDTO,
+  SimulationEvolutionPointDTO,
   SimulationResultDTO,
   SimulationSummaryDTO,
   StudyActivityDTO,
@@ -1639,5 +1641,138 @@ export async function listStudyActivities(
     limit: typeof parsed.limit === 'number' ? parsed.limit : (params.limit ?? 20),
     offset: typeof parsed.offset === 'number' ? parsed.offset : (params.offset ?? 0),
   };
+}
+
+function isValidSimulationEvolutionPointDTO(item: unknown): item is SimulationEvolutionPointDTO {
+  if (!item || typeof item !== 'object') return false;
+  const p = item as Record<string, unknown>;
+  const isStringOrNull = (v: unknown): boolean => v === null || typeof v === 'string';
+  const isNumberOrNull = (v: unknown): boolean =>
+    v === null || (typeof v === 'number' && Number.isFinite(v));
+
+  return (
+    typeof p.id === 'string' &&
+    p.id.trim() !== '' &&
+    isStringOrNull(p.title) &&
+    isNumberOrNull(p.scorePercentage) &&
+    typeof p.correctCount === 'number' &&
+    Number.isFinite(p.correctCount) &&
+    typeof p.wrongCount === 'number' &&
+    Number.isFinite(p.wrongCount) &&
+    typeof p.totalQuestions === 'number' &&
+    Number.isFinite(p.totalQuestions) &&
+    isNumberOrNull(p.durationSeconds) &&
+    (p.finishedAt === null ||
+      (typeof p.finishedAt === 'string' && !isNaN(Date.parse(p.finishedAt))))
+  );
+}
+
+function isValidStudyActivityItemDTO(item: unknown): item is StudyActivityDTO {
+  if (!item || typeof item !== 'object') return false;
+  const a = item as Record<string, unknown>;
+  const isStringOrNull = (v: unknown): boolean => v === null || typeof v === 'string';
+  const isNumberOrNull = (v: unknown): boolean =>
+    v === null || (typeof v === 'number' && Number.isFinite(v));
+
+  return (
+    typeof a.id === 'string' &&
+    typeof a.userId === 'string' &&
+    (a.type === 'QUESTION' || a.type === 'SIMULATION' || a.type === 'EXAM') &&
+    isStringOrNull(a.simulationId) &&
+    isStringOrNull(a.questionId) &&
+    isStringOrNull(a.examId) &&
+    isNumberOrNull(a.durationSeconds) &&
+    isNumberOrNull(a.scorePercentage) &&
+    isNumberOrNull(a.correctCount) &&
+    isNumberOrNull(a.wrongCount) &&
+    isNumberOrNull(a.unansweredCount) &&
+    typeof a.completedAt === 'string' &&
+    !isNaN(Date.parse(a.completedAt)) &&
+    typeof a.createdAt === 'string' &&
+    !isNaN(Date.parse(a.createdAt))
+  );
+}
+
+function isValidDashboardSummaryDTO(payload: unknown): payload is DashboardSummaryDTO {
+  if (!payload || typeof payload !== 'object') return false;
+  const p = payload as Record<string, unknown>;
+
+  const isNonNegativeNumber = (v: unknown): boolean =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0;
+
+  if (
+    !isNonNegativeNumber(p.completedSimulationsCount) ||
+    !isNonNegativeNumber(p.totalAnsweredQuestions) ||
+    !isNonNegativeNumber(p.totalCorrectAnswers) ||
+    !isNonNegativeNumber(p.totalWrongAnswers) ||
+    !isNonNegativeNumber(p.accuracyPercentage) ||
+    (p.accuracyPercentage as number) > 100 ||
+    !isNonNegativeNumber(p.totalDurationSeconds) ||
+    !isNonNegativeNumber(p.currentStreak) ||
+    !isNonNegativeNumber(p.longestStreak)
+  ) {
+    return false;
+  }
+
+  // lastActivityDate: null ou formato YYYY-MM-DD
+  if (
+    p.lastActivityDate !== null &&
+    (typeof p.lastActivityDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(p.lastActivityDate))
+  ) {
+    return false;
+  }
+
+  // recentSimulationsEvolution: array
+  if (!Array.isArray(p.recentSimulationsEvolution)) {
+    return false;
+  }
+  for (const item of p.recentSimulationsEvolution) {
+    if (!isValidSimulationEvolutionPointDTO(item)) {
+      return false;
+    }
+  }
+
+  // recentActivities: array
+  if (!Array.isArray(p.recentActivities)) {
+    return false;
+  }
+  for (const item of p.recentActivities) {
+    if (!isValidStudyActivityItemDTO(item)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Consulta o resumo executivo consolidado do Dashboard via GET /api/dashboard/summary.
+ */
+export async function getDashboardSummary(): Promise<DashboardSummaryDTO> {
+  const response = await fetch('/api/dashboard/summary', {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw await extractApiError(
+      response,
+      'Não foi possível carregar os dados do dashboard.'
+    );
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as unknown;
+  if (!isValidDashboardSummaryDTO(parsed)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_DASHBOARD_PAYLOAD',
+      'Resposta inesperada do servidor ao consultar resumo do dashboard.'
+    );
+  }
+
+  return parsed;
 }
 

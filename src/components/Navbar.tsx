@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.tsx';
 
@@ -19,6 +19,8 @@ export function Navbar() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const { status, user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isDashboardActive = location.pathname === '/dashboard';
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -65,6 +67,17 @@ export function Navbar() {
         <div className="hidden md:flex items-center gap-3">
           {status === 'authenticated' && user ? (
             <>
+              <Link
+                to="/dashboard"
+                aria-current={isDashboardActive ? 'page' : undefined}
+                className={`whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB] ${
+                  isDashboardActive
+                    ? 'bg-neutral-900 text-white'
+                    : 'text-neutral-300 hover:bg-neutral-900 hover:text-white'
+                }`}
+              >
+                Dashboard
+              </Link>
               <Link
                 to="/documents"
                 className="whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors duration-150 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
@@ -159,6 +172,18 @@ export function Navbar() {
           <div className="mt-4 flex flex-col gap-2 border-t border-neutral-800 pt-4">
             {status === 'authenticated' && user ? (
               <>
+                <Link
+                  to="/dashboard"
+                  aria-current={isDashboardActive ? 'page' : undefined}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`w-full rounded-md border border-neutral-800 px-4 py-2.5 text-center text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-[#2563EB] ${
+                    isDashboardActive
+                      ? 'bg-neutral-900 text-white'
+                      : 'text-neutral-200 hover:bg-neutral-900'
+                  }`}
+                >
+                  Dashboard
+                </Link>
                 <Link
                   to="/documents"
                   onClick={() => setMobileMenuOpen(false)}
