@@ -85,7 +85,7 @@ export class PrismaEducationalAnalyticsRepository implements IEducationalAnalyti
     let cursor: string | undefined = undefined;
 
     while (true) {
-      const batch: QuestionAttemptWithMetadata[] = await (this.client as PrismaClient).questionAttempt.findMany({
+      const rawBatch = await (this.client as PrismaClient).questionAttempt.findMany({
         where: {
           userId: cleanId,
           simulation: {
@@ -95,6 +95,8 @@ export class PrismaEducationalAnalyticsRepository implements IEducationalAnalyti
         },
         select: {
           id: true,
+          simulationId: true,
+          questionId: true,
           isCorrect: true,
           timeSpentSeconds: true,
           answeredAt: true,
@@ -111,7 +113,43 @@ export class PrismaEducationalAnalyticsRepository implements IEducationalAnalyti
         ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
       });
 
-      if (batch.length === 0) break;
+      if (rawBatch.length === 0) break;
+
+      // Sprint 9.5.1: Busca em lote único as SimulationQuestion correspondentes aos pares (simulationId, questionId)
+      // Garantia total contra consultas N+1: apenas 1 consulta por lote de paginação
+      const simulationIds = Array.from(new Set(rawBatch.map((item) => item.simulationId)));
+      const questionIds = Array.from(new Set(rawBatch.map((item) => item.questionId)));
+
+      const simulationQuestions = await (this.client as PrismaClient).simulationQuestion.findMany({
+        where: {
+          simulationId: { in: simulationIds },
+          questionId: { in: questionIds },
+        },
+        select: {
+          simulationId: true,
+          questionId: true,
+          isAnnulledSnapshot: true,
+        },
+      });
+
+      const annulledMap = new Map<string, boolean>();
+      for (const sq of simulationQuestions) {
+        annulledMap.set(`${sq.simulationId}:${sq.questionId}`, sq.isAnnulledSnapshot);
+      }
+
+      const batch: QuestionAttemptWithMetadata[] = rawBatch.map((item) => {
+        const isAnnulled = annulledMap.get(`${item.simulationId}:${item.questionId}`) ?? false;
+        return {
+          id: item.id,
+          simulationId: item.simulationId,
+          questionId: item.questionId,
+          isCorrect: item.isCorrect,
+          timeSpentSeconds: item.timeSpentSeconds,
+          answeredAt: item.answeredAt,
+          isAnnulled,
+          question: item.question,
+        };
+      });
 
       await onBatch(batch);
       totalProcessed += batch.length;
@@ -179,9 +217,11 @@ export interface MockQuestionAttemptItem {
   id: string;
   userId: string;
   simulationId: string;
+  questionId?: string;
   isCorrect: boolean | null;
   timeSpentSeconds: number | null;
   answeredAt: Date | null;
+  isAnnulled?: boolean;
   question: {
     subject: string | null;
     difficulty: string | null;
@@ -204,11 +244,21 @@ export interface MockSimulationItem {
 }
 
 /**
+ * Interface para questões de simulados no mock de testes.
+ */
+export interface MockSimulationQuestionItem {
+  simulationId: string;
+  questionId: string;
+  isAnnulledSnapshot: boolean;
+}
+
+/**
  * Repositório em memória para testes unitários isolados e herméticos da camada de Analytics Educacional.
  */
 export class MockEducationalAnalyticsRepository implements IEducationalAnalyticsRepository {
   public simulations: MockSimulationItem[] = [];
   public questionAttempts: MockQuestionAttemptItem[] = [];
+  public simulationQuestions: MockSimulationQuestionItem[] = [];
   public streaks: Array<{
     userId: string;
     currentStreak: number;
@@ -271,6 +321,11 @@ export class MockEducationalAnalyticsRepository implements IEducationalAnalytics
         .map((s) => [s.id, s])
     );
 
+    const annulledMap = new Map<string, boolean>();
+    for (const sq of this.simulationQuestions) {
+      annulledMap.set(`${sq.simulationId}:${sq.questionId}`, sq.isAnnulledSnapshot);
+    }
+
     return this.questionAttempts
       .filter((qa) => {
         if (qa.userId !== userId) return false;
@@ -278,17 +333,24 @@ export class MockEducationalAnalyticsRepository implements IEducationalAnalytics
         return sim !== undefined && sim.userId === userId;
       })
       .sort((a, b) => a.id.localeCompare(b.id))
-      .map((qa) => ({
-        id: qa.id,
-        isCorrect: qa.isCorrect,
-        timeSpentSeconds: qa.timeSpentSeconds,
-        answeredAt: qa.answeredAt,
-        question: {
-          subject: qa.question.subject,
-          difficulty: qa.question.difficulty,
-          topic: qa.question.topic,
-        },
-      }));
+      .map((qa) => {
+        const qId = qa.questionId ?? qa.id;
+        const isAnnulled = qa.isAnnulled ?? annulledMap.get(`${qa.simulationId}:${qId}`) ?? false;
+        return {
+          id: qa.id,
+          simulationId: qa.simulationId,
+          questionId: qId,
+          isCorrect: qa.isCorrect,
+          timeSpentSeconds: qa.timeSpentSeconds,
+          answeredAt: qa.answeredAt,
+          isAnnulled,
+          question: {
+            subject: qa.question.subject,
+            difficulty: qa.question.difficulty,
+            topic: qa.question.topic,
+          },
+        };
+      });
   }
 
   async getStreakAndActivityMetrics(userId: string): Promise<{

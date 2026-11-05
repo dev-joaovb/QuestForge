@@ -912,7 +912,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
       expect(adm?.accuracyPercentage).toBe(66.7);
     });
 
-    it('deve registrar acerto quando questão anulada foi ativamente respondida', async () => {
+    it('deve preservar ponto oficial mas neutralizar acerto pedagógico quando questão anulada foi respondida (Sprint 9.5.1)', async () => {
       const simId = 'sim-annulled-answered';
       mockRepo.simulations.push({
         id: simId,
@@ -925,11 +925,17 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         finishedAt: new Date(),
       });
 
+      mockRepo.simulationQuestions.push(
+        { simulationId: simId, questionId: 'q-regular', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'q-annulled', isAnnulledSnapshot: true }
+      );
+
       mockRepo.questionAttempts.push(
         {
           id: 'att-regular',
           userId: USER_A,
           simulationId: simId,
+          questionId: 'q-regular',
           isCorrect: true,
           timeSpentSeconds: 40,
           answeredAt: new Date(),
@@ -939,7 +945,9 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           id: 'att-annulled-active',
           userId: USER_A,
           simulationId: simId,
-          isCorrect: true, // Questão anulada respondida pelo estudante
+          questionId: 'q-annulled',
+          isCorrect: true, // Questão anulada respondida pelo estudante (bonificada no exame)
+          isAnnulled: true,
           timeSpentSeconds: 30,
           answeredAt: new Date(),
           question: { subject: 'Ética Pública', difficulty: 'EASY', topic: 'Deveres' },
@@ -948,9 +956,13 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
 
       const result = await service.getStudentAnalytics(USER_A);
 
+      // Pontuação oficial do exame continua sendo 2 (1 mérito + 1 anulada)
       expect(result.globalStats.officialTotalPoints).toBe(2);
-      expect(result.globalStats.pedagogicalAnsweredQuestions).toBe(2);
-      expect(result.globalStats.pedagogicalCorrectAnswers).toBe(2);
+      expect(result.globalStats.averageSimulationScore).toBe(100.0);
+
+      // Desempenho pedagógico computa estritamente a questão regular de mérito demonstrado (1 acerto em 1 respondida)
+      expect(result.globalStats.pedagogicalAnsweredQuestions).toBe(1);
+      expect(result.globalStats.pedagogicalCorrectAnswers).toBe(1);
       expect(result.globalStats.pedagogicalAccuracyPercentage).toBe(100.0);
     });
   });
@@ -1153,6 +1165,278 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         normalizedKey: 'direito processual civil e do trabalho',
         displayLabel: 'Direito Processual Civil e do Trabalho',
       });
+    });
+  });
+
+  describe('Sprint 9.5: Consolidação da Precisão Pedagógica de Questões Anuladas', () => {
+    it('deve garantir que bônus oficiais de questões anuladas não respondidas não inflacionem a acurácia pedagógica nem os percentuais por disciplina', async () => {
+      const simId = 'sim-consolidation-9-5';
+      // Simulado de 5 questões: 2 acertos mérito, 2 erros, 1 questão anulada não respondida
+      // Pontuação oficial de concurso: 2 acertos + 1 anulada = 3 pontos em 5 questões (60%)
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 60.0,
+        correctCount: 3,
+        wrongCount: 2,
+        durationSeconds: 600,
+        finishedAt: new Date('2026-03-10T12:00:00Z'),
+      });
+
+      // 2 acertos demonstrados em Direito Civil
+      mockRepo.questionAttempts.push(
+        {
+          id: 'att-civil-1',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true,
+          timeSpentSeconds: 60,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Civil', difficulty: 'EASY', topic: 'Contratos' },
+        },
+        {
+          id: 'att-civil-2',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true,
+          timeSpentSeconds: 60,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Civil', difficulty: 'EASY', topic: 'Contratos' },
+        }
+      );
+
+      // 2 erros em Direito Civil
+      mockRepo.questionAttempts.push(
+        {
+          id: 'att-civil-3',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: false,
+          timeSpentSeconds: 60,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Civil', difficulty: 'MEDIUM', topic: 'Contratos' },
+        },
+        {
+          id: 'att-civil-4',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: false,
+          timeSpentSeconds: 60,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Civil', difficulty: 'MEDIUM', topic: 'Contratos' },
+        }
+      );
+
+      // 1 tentativa não respondida (em branco) na questão anulada
+      mockRepo.questionAttempts.push({
+        id: 'att-civil-annulled-unanswered',
+        userId: USER_A,
+        simulationId: simId,
+        isCorrect: null, // Sem resposta ativa
+        timeSpentSeconds: 15,
+        answeredAt: new Date(),
+        question: { subject: 'Direito Civil', difficulty: 'HARD', topic: 'Contratos' },
+      });
+
+      const stats = await service.getStudentAnalytics(USER_A);
+
+      // 1. Pontuação oficial do concurso preservada
+      expect(stats.globalStats.officialTotalPoints).toBe(3);
+      expect(stats.globalStats.averageSimulationScore).toBe(60.0);
+
+      // 2. Métrica pedagógica demonstrada estritamente apurada (2 acertos em 4 respondidas = 50.0%)
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(4);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(2);
+      expect(stats.globalStats.pedagogicalWrongAnswers).toBe(2);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(50.0);
+
+      // 3. Disciplina Direito Civil reflete rigorosamente 50.0% (não 60.0%)
+      const civil = stats.subjectPerformance.find((s) => s.subject === 'Direito Civil');
+      expect(civil).toBeDefined();
+      expect(civil?.totalAnswered).toBe(4);
+      expect(civil?.correctCount).toBe(2);
+      expect(civil?.wrongCount).toBe(2);
+      expect(civil?.accuracyPercentage).toBe(50.0);
+    });
+
+    it('deve neutralizar questão anulada respondida que recebeu isCorrect=true, impedindo que ela compute como acerto pedagógico', async () => {
+      const simId = 'sim-annulled-answered-neutralized';
+      // Simulado de 4 questões: 1 regular correta, 1 regular incorreta, 1 anulada respondida, 1 anulada em branco
+      // Pontuação oficial de exame: 1 correta + 2 anuladas (ambas pontuam no exame) = 3 pontos em 4 questões (75.0%)
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 75.0,
+        correctCount: 3,
+        wrongCount: 1,
+        durationSeconds: 400,
+        finishedAt: new Date(),
+      });
+
+      mockRepo.simulationQuestions.push(
+        { simulationId: simId, questionId: 'q-reg-ok', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'q-reg-fail', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'q-ann-answered', isAnnulledSnapshot: true },
+        { simulationId: simId, questionId: 'q-ann-blank', isAnnulledSnapshot: true }
+      );
+
+      mockRepo.questionAttempts.push(
+        {
+          id: 'att-1',
+          userId: USER_A,
+          simulationId: simId,
+          questionId: 'q-reg-ok',
+          isCorrect: true,
+          timeSpentSeconds: 30,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Penal', difficulty: 'MEDIUM', topic: 'Crimes' },
+        },
+        {
+          id: 'att-2',
+          userId: USER_A,
+          simulationId: simId,
+          questionId: 'q-reg-fail',
+          isCorrect: false,
+          timeSpentSeconds: 45,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Penal', difficulty: 'HARD', topic: 'Penas' },
+        },
+        {
+          id: 'att-3',
+          userId: USER_A,
+          simulationId: simId,
+          questionId: 'q-ann-answered',
+          isCorrect: true, // No SimulationService recebeu true por bonificação
+          isAnnulled: true,
+          timeSpentSeconds: 50,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Penal', difficulty: 'EASY', topic: 'Teoria do Crime' },
+        },
+        {
+          id: 'att-4',
+          userId: USER_A,
+          simulationId: simId,
+          questionId: 'q-ann-blank',
+          isCorrect: null, // Em branco
+          isAnnulled: true,
+          timeSpentSeconds: 10,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Penal', difficulty: 'HARD', topic: 'Concurso de Pessoas' },
+        }
+      );
+
+      const stats = await service.getStudentAnalytics(USER_A);
+
+      // 1. Pontuação oficial preservada
+      expect(stats.globalStats.officialTotalPoints).toBe(3);
+      expect(stats.globalStats.averageSimulationScore).toBe(75.0);
+
+      // 2. Métrica pedagógica estrita: apenas 2 questões regulares computam (1 acerto e 1 erro = 50.0%)
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(2);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(1);
+      expect(stats.globalStats.pedagogicalWrongAnswers).toBe(1);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(50.0);
+
+      // 3. Disciplina Direito Penal reflete exatamente 50.0% (1/2), e não 66.7% ou 75%
+      const penal = stats.subjectPerformance.find((s) => s.subject === 'Direito Penal');
+      expect(penal).toBeDefined();
+      expect(penal?.totalAnswered).toBe(2);
+      expect(penal?.correctCount).toBe(1);
+      expect(penal?.accuracyPercentage).toBe(50.0);
+    });
+
+    it('deve lidar corretamente com disciplina contendo exclusivamente questões anuladas sem gerar NaN ou divisão por zero', async () => {
+      const simId = 'sim-only-annulled';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100.0,
+        correctCount: 2,
+        wrongCount: 0,
+        durationSeconds: 150,
+        finishedAt: new Date(),
+      });
+
+      mockRepo.simulationQuestions.push(
+        { simulationId: simId, questionId: 'q-only-ann-1', isAnnulledSnapshot: true },
+        { simulationId: simId, questionId: 'q-only-ann-2', isAnnulledSnapshot: true }
+      );
+
+      mockRepo.questionAttempts.push(
+        {
+          id: 'att-ann-1',
+          userId: USER_A,
+          simulationId: simId,
+          questionId: 'q-only-ann-1',
+          isCorrect: true,
+          isAnnulled: true,
+          timeSpentSeconds: 30,
+          answeredAt: new Date(),
+          question: { subject: 'Direitos Humanos', difficulty: 'MEDIUM', topic: 'Tratados' },
+        },
+        {
+          id: 'att-ann-2',
+          userId: USER_A,
+          simulationId: simId,
+          questionId: 'q-only-ann-2',
+          isCorrect: true,
+          isAnnulled: true,
+          timeSpentSeconds: 30,
+          answeredAt: new Date(),
+          question: { subject: 'Direitos Humanos', difficulty: 'HARD', topic: 'Convenções' },
+        }
+      );
+
+      const stats = await service.getStudentAnalytics(USER_A);
+
+      // Pontuação oficial: 2 pontos
+      expect(stats.globalStats.officialTotalPoints).toBe(2);
+      expect(stats.globalStats.averageSimulationScore).toBe(100.0);
+
+      // Métrica pedagógica: 0 questões regulares respondidas
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(0);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(0);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(0);
+
+      // Disciplina Direitos Humanos não deve existir em subjectPerformance (0 respondidas pedagogicamente)
+      const dh = stats.subjectPerformance.find((s) => s.subject === 'Direitos Humanos');
+      expect(dh).toBeUndefined();
+    });
+
+    it('deve processar tentativas quando a informação de anulação for desconhecida sem quebrar a execução', async () => {
+      const simId = 'sim-unknown-annulled';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100.0,
+        correctCount: 1,
+        wrongCount: 0,
+        durationSeconds: 100,
+        finishedAt: new Date(),
+      });
+
+      // SimulationQuestion correspondente não existe no banco (inconsistência histórica / órfã)
+      mockRepo.questionAttempts.push({
+        id: 'att-orphan',
+        userId: USER_A,
+        simulationId: simId,
+        questionId: 'q-orphan',
+        isCorrect: true,
+        // isAnnulled omitido / não encontrado -> tratado como false por fallback seguro
+        timeSpentSeconds: 40,
+        answeredAt: new Date(),
+        question: { subject: 'Informática', difficulty: 'EASY', topic: 'Sistemas Operacionais' },
+      });
+
+      const stats = await service.getStudentAnalytics(USER_A);
+
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(1);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(1);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(100.0);
     });
   });
 });

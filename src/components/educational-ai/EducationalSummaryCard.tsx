@@ -113,8 +113,8 @@ export function EducationalSummaryCard({
       <div className="mt-5 flex items-center gap-2 text-xs text-neutral-400">
         <ShieldCheck className="h-4 w-4 shrink-0 text-neutral-400" aria-hidden="true" />
         <span>
-          Recomendações exclusivamente consultivas baseadas no seu histórico real.
-          Questões anuladas de concursos públicos atribuem pontuação oficial por edital.
+          Recomendações exclusivamente consultivas. Questões anuladas em exames oficiais atribuem
+          pontuação por edital, mas são neutralizadas no cálculo pedagógico para refletir apenas o mérito demonstrado.
         </span>
       </div>
     </div>

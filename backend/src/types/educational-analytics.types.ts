@@ -160,13 +160,16 @@ export interface CompletedSimulationMetric {
 }
 
 /**
- * Modelo intermediário de tentativa de questão com metadados da questão associada.
+ * Modelo intermediário de tentativa de questão com metadados da questão associada e status de anulação (Sprint 9.5.1).
  */
 export interface QuestionAttemptWithMetadata {
   id: string;
+  simulationId: string;
+  questionId: string;
   isCorrect: boolean | null;
   timeSpentSeconds: number | null;
   answeredAt: Date | null;
+  isAnnulled?: boolean;
   question: {
     subject: string | null;
     difficulty: string | null;

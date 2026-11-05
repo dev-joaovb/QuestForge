@@ -127,6 +127,13 @@ export class EducationalAnalyticsService {
             continue;
           }
 
+          // Sprint 9.5.1: Neutralização de questões anuladas em exames oficiais
+          // Bonificações oficiais concedidas a questões anuladas não constituem demonstração de mérito pedagógico
+          // e são neutralizadas das métricas de acurácia, disciplinas e dificuldades.
+          if (attempt.isAnnulled === true) {
+            continue;
+          }
+
           // Métricas pedagógicas gerais (ACH-02)
           pedagogicalAnsweredQuestions += 1;
           if (attempt.isCorrect === true) {

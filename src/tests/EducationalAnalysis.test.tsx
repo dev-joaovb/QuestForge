@@ -542,4 +542,47 @@ describe('Sprint 9.4 — Interface React de Análises Educacionais (src/tests/Ed
     });
     expect(mainHeading).toBeInTheDocument();
   });
+
+  // 21. Sprint 9.5: Aviso pedagógico preciso sobre questões anuladas
+  it('21. deve renderizar aviso pedagógico preciso distinguindo pontuação oficial de domínio demonstrado', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => sampleAiAnalysis,
+    } as Response);
+
+    render(<EducationalAnalysisSection enabled={true} />);
+
+    const summaryCard = await screen.findByTestId('educational-summary-card');
+    expect(summaryCard).toHaveTextContent(
+      'Questões anuladas em exames oficiais atribuem pontuação por edital, mas são neutralizadas no cálculo pedagógico para refletir apenas o mérito demonstrado.'
+    );
+  });
+
+  // 22. Sprint 9.5: Concorrência e cancelamento prévio no refetch
+  it('22. deve cancelar requisição anterior em andamento quando refetch for acionado', async () => {
+    const { renderHook } = await import('@testing-library/react');
+    const { useEducationalAnalysis } = await import('../hooks/useEducationalAnalysis.ts');
+
+    const signals: AbortSignal[] = [];
+
+    globalThis.fetch = vi.fn().mockImplementation(async (_input, init?: RequestInit) => {
+      const signal = init?.signal as AbortSignal;
+      signals.push(signal);
+      return new Promise(() => {});
+    });
+
+    const { result } = renderHook(() => useEducationalAnalysis(true));
+    expect(signals.length).toBe(1);
+    expect(signals[0].aborted).toBe(false);
+
+    // Dispara refetch enquanto a primeira chamada ainda está pendente
+    void result.current.refetch();
+
+    expect(signals.length).toBe(2);
+    // A primeira chamada foi cancelada para dar lugar à nova
+    expect(signals[0].aborted).toBe(true);
+    expect(signals[1].aborted).toBe(false);
+  });
 });
