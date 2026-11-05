@@ -25,6 +25,10 @@ import {
   createDashboardRouter,
   type DashboardRouterDependencies,
 } from './dashboard.routes.ts';
+import {
+  createEducationalAiRouter,
+  type EducationalAiRouterDependencies,
+} from './educational-ai.routes.ts';
 
 export interface ApiRouterDependencies {
   health?: HealthCheckDependencies;
@@ -35,6 +39,7 @@ export interface ApiRouterDependencies {
   simulations?: SimulationRouterDependencies;
   activities?: StudyActivityRouterDependencies;
   dashboard?: DashboardRouterDependencies;
+  educationalAi?: EducationalAiRouterDependencies;
 }
 
 export function createApiRouter(deps?: ApiRouterDependencies): Router {
@@ -92,6 +97,15 @@ export function createApiRouter(deps?: ApiRouterDependencies): Router {
     createDashboardRouter({
       authService: deps?.dashboard?.authService ?? deps?.auth?.authService,
       dashboardService: deps?.dashboard?.dashboardService,
+    })
+  );
+  apiRouter.use(
+    '/educational-ai',
+    createEducationalAiRouter({
+      authService: deps?.educationalAi?.authService ?? deps?.auth?.authService,
+      educationalAiService: deps?.educationalAi?.educationalAiService,
+      rateLimiter: deps?.educationalAi?.rateLimiter,
+      rateLimitOptions: deps?.educationalAi?.rateLimitOptions,
     })
   );
 

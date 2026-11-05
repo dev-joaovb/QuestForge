@@ -500,3 +500,60 @@ export interface DashboardSummaryDTO {
   recentActivities: StudyActivityDTO[];
 }
 
+// ============================================================================
+// Tipos para IA e Analytics Educacional (Sprint 9)
+// ============================================================================
+
+export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
+export type StudyPriorityLevel = 'HIGH' | 'MEDIUM' | 'LOW';
+export type TrendDirection =
+  | 'IMPROVING'
+  | 'STABLE'
+  | 'DECLINING'
+  | 'INSUFFICIENT_DATA';
+
+export interface StrengthItemDTO {
+  subject: string;
+  description: string;
+  accuracyPercentage: number;
+}
+
+export interface WeaknessItemDTO {
+  subject: string;
+  description: string;
+  accuracyPercentage: number;
+}
+
+export interface EducationalTrendAnalysisDTO {
+  direction: TrendDirection;
+  description: string;
+  deltaPercentage: number | null;
+}
+
+export interface RecommendationItemDTO {
+  title: string;
+  description: string;
+  actionableStep: string;
+}
+
+export interface StudyPriorityDTO {
+  subject: string;
+  priority: StudyPriorityLevel;
+  reason: string;
+  targetAccuracyPercentage?: number;
+}
+
+export interface EducationalAnalysisResponseDTO {
+  summary: string;
+  strengths: StrengthItemDTO[];
+  weaknesses: WeaknessItemDTO[];
+  trend: EducationalTrendAnalysisDTO;
+  recommendations: RecommendationItemDTO[];
+  priorities: StudyPriorityDTO[];
+  confidenceLevel: ConfidenceLevel;
+  insufficientDataNotice: string | null;
+  source: 'AI_INFERENCE' | 'DETERMINISTIC_FALLBACK';
+  generatedAt: string;
+}
+
+

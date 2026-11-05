@@ -13,11 +13,16 @@ export type {
 };
 
 /**
- * Repositório Prisma para leitura de dados analíticos educacionais (Sprint 9.1).
+ * Repositório Prisma para leitura de dados analíticos educacionais (Sprint 9.1 / 9.1.1).
  *
  * Todas as operações são estritamente somente de leitura (findMany, findUnique, count).
  * Não há mutações de dados nem escritas secundárias.
- * Todas as queries utilizam o identificador obrigatório do usuário (userId) para isolamento multi-inquilino.
+ *
+ * Refinamentos da Sprint 9.1.1:
+ * - ACH-01: Paginação por cursor em lotes estáveis (processQuestionAttemptsInBatches),
+ *   garantindo consumo de memória O(1) sem truncamento silencioso de dados.
+ * - ACH-03: Defesa em profundidade reforçando o filtro de isolamento tanto na raiz
+ *   da QuestionAttempt quanto na relação aninhada Simulation (simulation: { status: 'COMPLETED', userId }).
  */
 export class PrismaEducationalAnalyticsRepository implements IEducationalAnalyticsRepository {
   private readonly clientGetter: () => PrismaClient | Prisma.TransactionClient;
@@ -62,33 +67,76 @@ export class PrismaEducationalAnalyticsRepository implements IEducationalAnalyti
   }
 
   /**
+   * Processa todas as tentativas de questões em lotes paginados estáveis (ACH-01 e ACH-03).
+   *
+   * Utiliza cursor ordenado por id para garantir que 100% dos registros sejam processados
+   * de forma determinística, sem estourar o limite de memória Node.js em históricos volumosos.
+   */
+  async processQuestionAttemptsInBatches(
+    userId: string,
+    onBatch: (batch: QuestionAttemptWithMetadata[]) => Promise<void> | void,
+    batchSize = 1000
+  ): Promise<number> {
+    const cleanId = userId?.trim();
+    if (!cleanId) return 0;
+
+    const safeBatchSize = Math.max(10, Math.min(5000, batchSize));
+    let totalProcessed = 0;
+    let cursor: string | undefined = undefined;
+
+    while (true) {
+      const batch: QuestionAttemptWithMetadata[] = await (this.client as PrismaClient).questionAttempt.findMany({
+        where: {
+          userId: cleanId,
+          simulation: {
+            status: 'COMPLETED',
+            userId: cleanId, // ACH-03: Defesa em profundidade na relação relacional
+          },
+        },
+        select: {
+          id: true,
+          isCorrect: true,
+          timeSpentSeconds: true,
+          answeredAt: true,
+          question: {
+            select: {
+              subject: true,
+              difficulty: true,
+              topic: true,
+            },
+          },
+        },
+        orderBy: { id: 'asc' },
+        take: safeBatchSize,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      });
+
+      if (batch.length === 0) break;
+
+      await onBatch(batch);
+      totalProcessed += batch.length;
+      cursor = batch[batch.length - 1].id;
+
+      if (batch.length < safeBatchSize) break;
+    }
+
+    return totalProcessed;
+  }
+
+  /**
    * Obtém todas as tentativas de questões respondidas pelo estudante em simulados concluídos,
    * unindo os metadados da questão (disciplina, dificuldade e tópico).
    */
   async getQuestionAttemptsWithMetadata(userId: string): Promise<QuestionAttemptWithMetadata[]> {
-    const results = await (this.client as PrismaClient).questionAttempt.findMany({
-      where: {
-        userId,
-        simulation: {
-          status: 'COMPLETED',
-        },
+    const allResults: QuestionAttemptWithMetadata[] = [];
+    await this.processQuestionAttemptsInBatches(
+      userId,
+      (batch) => {
+        allResults.push(...batch);
       },
-      select: {
-        id: true,
-        isCorrect: true,
-        timeSpentSeconds: true,
-        answeredAt: true,
-        question: {
-          select: {
-            subject: true,
-            difficulty: true,
-            topic: true,
-          },
-        },
-      },
-    });
-
-    return results;
+      1000
+    );
+    return allResults;
   }
 
   /**
@@ -100,9 +148,10 @@ export class PrismaEducationalAnalyticsRepository implements IEducationalAnalyti
     lastActivityDate: string | null;
     totalActivities: number;
   }> {
+    const cleanId = userId?.trim();
     const [streak, totalActivities] = await Promise.all([
       (this.client as PrismaClient).userStreak.findUnique({
-        where: { userId },
+        where: { userId: cleanId },
         select: {
           currentStreak: true,
           longestStreak: true,
@@ -110,7 +159,7 @@ export class PrismaEducationalAnalyticsRepository implements IEducationalAnalyti
         },
       }),
       (this.client as PrismaClient).studyActivity.count({
-        where: { userId },
+        where: { userId: cleanId },
       }),
     ]);
 
@@ -196,16 +245,39 @@ export class MockEducationalAnalyticsRepository implements IEducationalAnalytics
       }));
   }
 
+  async processQuestionAttemptsInBatches(
+    userId: string,
+    onBatch: (batch: QuestionAttemptWithMetadata[]) => Promise<void> | void,
+    batchSize = 1000
+  ): Promise<number> {
+    const attempts = await this.getQuestionAttemptsWithMetadata(userId);
+    const safeBatchSize = Math.max(1, batchSize);
+    let totalProcessed = 0;
+
+    for (let i = 0; i < attempts.length; i += safeBatchSize) {
+      const slice = attempts.slice(i, i + safeBatchSize);
+      await onBatch(slice);
+      totalProcessed += slice.length;
+    }
+
+    return totalProcessed;
+  }
+
   async getQuestionAttemptsWithMetadata(userId: string): Promise<QuestionAttemptWithMetadata[]> {
-    // Localiza os IDs de simulados COMPLETED do usuário
-    const completedSimIds = new Set(
+    // ACH-03: Defesa em profundidade - os simulados devem ser do usuário e COMPLETED
+    const validSimulations = new Map(
       this.simulations
         .filter((s) => s.userId === userId && s.status === 'COMPLETED')
-        .map((s) => s.id)
+        .map((s) => [s.id, s])
     );
 
     return this.questionAttempts
-      .filter((qa) => qa.userId === userId && completedSimIds.has(qa.simulationId))
+      .filter((qa) => {
+        if (qa.userId !== userId) return false;
+        const sim = validSimulations.get(qa.simulationId);
+        return sim !== undefined && sim.userId === userId;
+      })
+      .sort((a, b) => a.id.localeCompare(b.id))
       .map((qa) => ({
         id: qa.id,
         isCorrect: qa.isCorrect,

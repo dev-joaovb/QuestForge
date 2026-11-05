@@ -10,6 +10,7 @@ import { DashboardMetricCards } from '../components/dashboard/DashboardMetricCar
 import { DashboardStreakBanner } from '../components/dashboard/DashboardStreakBanner.tsx';
 import { PerformanceTrendChart } from '../components/dashboard/PerformanceTrendChart.tsx';
 import { RecentActivitiesList } from '../components/dashboard/RecentActivitiesList.tsx';
+import { EducationalAnalysisSection } from '../components/educational-ai/EducationalAnalysisSection.tsx';
 
 export function DashboardPage() {
   const { status: authStatus, user, refreshSession } = useAuth();
@@ -214,6 +215,9 @@ export function DashboardPage() {
                     </div>
                   </div>
                 )}
+
+                {/* 5. Seção de Análise e Diagnóstico Educacional por IA (Sprint 9.4) */}
+                <EducationalAnalysisSection enabled={authStatus === 'authenticated' && !isLoading && !errorMessage} />
               </>
             )}
           </div>

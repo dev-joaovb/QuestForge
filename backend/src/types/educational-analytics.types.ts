@@ -1,5 +1,5 @@
 /**
- * QuestForge — Camada de Analytics Educacional (Sprint 9.1)
+ * QuestForge — Camada de Analytics Educacional (Sprint 9.1 / 9.1.1)
  *
  * Contratos de tipos, DTOs e funções utilitárias matemáticas para agregação estatística
  * do estudante a partir de dados reais persistidos no PostgreSQL via Prisma.
@@ -9,6 +9,8 @@
  * - Precisão matemática ponderada: acertos / total respondido (nunca média de médias).
  * - Sem divisão por zero: valores protegidos contra NaN e Infinity.
  * - Limiares explícitos e documentados de suficiência amostral.
+ * - Distinção formal entre pontuação oficial de concursos e acurácia pedagógica demonstrada.
+ * - Normalização canônica e estável de nomes de disciplinas.
  */
 
 export const MIN_QUESTIONS_FOR_DESCRIPTIVE_STATS = 5;
@@ -45,7 +47,11 @@ export type TrendDirection = 'IMPROVING' | 'STABLE' | 'DECLINING' | 'INSUFFICIEN
 export type QuestionDifficultyCategory = 'EASY' | 'MEDIUM' | 'HARD' | 'UNSPECIFIED';
 
 /**
- * Agregação de desempenho por disciplina.
+ * Agregação de desempenho pedagógico por disciplina.
+ *
+ * Baseada estritamente em questões ativamente resolvidas pelo estudante.
+ * Questões não respondidas ou anuladas sem resolução ativa não distorcem
+ * o percentual de domínio do conteúdo.
  */
 export interface SubjectPerformanceItemDTO {
   subject: string;
@@ -58,7 +64,7 @@ export interface SubjectPerformanceItemDTO {
 }
 
 /**
- * Agregação de desempenho por nível de dificuldade.
+ * Agregação de desempenho pedagógico por nível de dificuldade.
  */
 export interface DifficultyPerformanceItemDTO {
   difficulty: QuestionDifficultyCategory;
@@ -104,20 +110,32 @@ export interface SampleSufficiencyDTO {
 
 /**
  * Estatísticas globais consolidadas do estudante.
+ *
+ * Formaliza a distinção entre:
+ * 1. Pontuação oficial do simulado (regras de concurso onde anulações podem somar pontos ao exame).
+ * 2. Domínio pedagógico demonstrado (acertos reais comprovados em respostas ativas).
  */
 export interface GlobalStudentStatsDTO {
   completedSimulationsCount: number;
+  // --- Métricas Oficiais de Exames / Simulados ---
+  averageSimulationScore: number | null;
+  officialTotalPoints: number; // Soma de correctCount nos simulados concluídos (inclui bônus oficial de anulações)
+  // --- Métricas Pedagógicas Demonstradas (ACH-02) ---
+  pedagogicalAnsweredQuestions: number; // Questões efetivamente respondidas com alternativa
+  pedagogicalCorrectAnswers: number; // Questões acertadas por mérito demonstrado
+  pedagogicalWrongAnswers: number; // Questões erradas
+  pedagogicalAccuracyPercentage: number; // (pedagogicalCorrectAnswers / pedagogicalAnsweredQuestions) * 100
+  // --- Campos mantidos para compatibilidade retroativa ---
   totalAnsweredQuestions: number;
   totalCorrectAnswers: number;
   totalWrongAnswers: number;
   globalAccuracyPercentage: number;
-  averageSimulationScore: number | null;
   averageTimeSpentPerQuestionSeconds: number | null;
   totalDurationSeconds: number;
 }
 
 /**
- * DTO consolidado do perfil estatístico educacional (Sprint 9.1).
+ * DTO consolidado do perfil estatístico educacional (Sprint 9.1 / 9.1.1).
  * Destinado a subsidiar o motor de IA da Sprint 9.2 sem exposição de PII.
  */
 export interface EducationalStudentStatsDTO {
@@ -172,6 +190,16 @@ export interface IEducationalAnalyticsRepository {
   getQuestionAttemptsWithMetadata(userId: string): Promise<QuestionAttemptWithMetadata[]>;
 
   /**
+   * Processa todas as tentativas de questões em lotes paginados estáveis (ACH-01),
+   * garantindo uso limitado e constante de memória sem descartar histórico.
+   */
+  processQuestionAttemptsInBatches(
+    userId: string,
+    onBatch: (batch: QuestionAttemptWithMetadata[]) => Promise<void> | void,
+    batchSize?: number
+  ): Promise<number>;
+
+  /**
    * Obtém dados consolidados de sequência (streak) e contagem total de atividades de estudo registradas.
    */
   getStreakAndActivityMetrics(userId: string): Promise<{
@@ -180,6 +208,53 @@ export interface IEducationalAnalyticsRepository {
     lastActivityDate: string | null;
     totalActivities: number;
   }>;
+}
+
+/**
+ * Normaliza o nome da disciplina para agrupamento determinístico e insensível a capitalização/espaços (ACH-04).
+ *
+ * Regras:
+ * - Remove espaços extras no início, fim e entre palavras.
+ * - Cria chave minúscula única para comparação (ex: "direito constitucional").
+ * - Constrói um rótulo canônico com Title Case determinístico em português (preserva preposições em minúsculas).
+ * - Preserva acentos ortográficos (ex: "Língua Portuguesa").
+ * - Retorna "Não classificada" para valores nulos, vazios ou apenas espaços.
+ */
+export function normalizeSubjectKey(rawSubject: string | null | undefined): {
+  normalizedKey: string;
+  displayLabel: string;
+} {
+  if (!rawSubject || typeof rawSubject !== 'string') {
+    return { normalizedKey: 'nao_classificada', displayLabel: 'Não classificada' };
+  }
+
+  const clean = rawSubject.trim().replace(/\s+/g, ' ');
+  if (!clean) {
+    return { normalizedKey: 'nao_classificada', displayLabel: 'Não classificada' };
+  }
+
+  const normalizedKey = clean.toLowerCase();
+
+  // Conectivos comuns em pt-BR que devem permanecer em minúsculas quando intermediários
+  const minorWords = new Set([
+    'de', 'da', 'do', 'das', 'dos', 'em', 'e', 'para', 'com', 'por', 'a', 'o', 'as', 'os'
+  ]);
+
+  const words = clean.split(' ');
+  const displayLabel = words
+    .map((word, index) => {
+      const lower = word.toLowerCase();
+      if (index > 0 && minorWords.has(lower)) {
+        return lower;
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
+
+  return {
+    normalizedKey,
+    displayLabel,
+  };
 }
 
 /**

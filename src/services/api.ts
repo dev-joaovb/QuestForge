@@ -5,6 +5,7 @@ import type {
   CreateOrUpdateQuestionPayload,
   CreateSimulationPayload,
   DashboardSummaryDTO,
+  EducationalAnalysisResponseDTO,
   HealthApiResponse,
   ListAnswerKeyItemsParams,
   ListAnswerKeyVersionsParams,
@@ -1770,6 +1771,98 @@ export async function getDashboardSummary(): Promise<DashboardSummaryDTO> {
       response.status,
       'INVALID_DASHBOARD_PAYLOAD',
       'Resposta inesperada do servidor ao consultar resumo do dashboard.'
+    );
+  }
+
+  return parsed;
+}
+
+function isValidEducationalAnalysisResponseDTO(
+  payload: unknown
+): payload is EducationalAnalysisResponseDTO {
+  if (!payload || typeof payload !== 'object') return false;
+  const p = payload as Record<string, unknown>;
+
+  if (
+    typeof p.summary !== 'string' ||
+    !Array.isArray(p.strengths) ||
+    !Array.isArray(p.weaknesses)
+  ) {
+    return false;
+  }
+
+  if (!p.trend || typeof p.trend !== 'object') return false;
+  const t = p.trend as Record<string, unknown>;
+  const validDirections = ['IMPROVING', 'STABLE', 'DECLINING', 'INSUFFICIENT_DATA'];
+  if (
+    !validDirections.includes(t.direction as string) ||
+    typeof t.description !== 'string'
+  ) {
+    return false;
+  }
+  if (t.deltaPercentage !== null && typeof t.deltaPercentage !== 'number') {
+    return false;
+  }
+
+  if (!Array.isArray(p.recommendations) || !Array.isArray(p.priorities)) {
+    return false;
+  }
+
+  const validConfidence = ['HIGH', 'MEDIUM', 'LOW'];
+  if (!validConfidence.includes(p.confidenceLevel as string)) {
+    return false;
+  }
+
+  if (p.insufficientDataNotice !== null && typeof p.insufficientDataNotice !== 'string') {
+    return false;
+  }
+
+  if (p.source !== 'AI_INFERENCE' && p.source !== 'DETERMINISTIC_FALLBACK') {
+    return false;
+  }
+
+  if (typeof p.generatedAt !== 'string') {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Consulta a análise e recomendações educacionais do estudante autenticado via GET /api/educational-ai/analysis.
+ * Trata erros HTTP (401, 429, 503) lançando ApiHttpError e suporta cancelamento voluntário via AbortSignal.
+ * Não envia userId, prompt, model ou forceFallback.
+ */
+export async function getEducationalAnalysis(
+  signal?: AbortSignal
+): Promise<EducationalAnalysisResponseDTO> {
+  const response = await fetch('/api/educational-ai/analysis', {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    let fallbackMessage = 'Não foi possível carregar a análise educacional.';
+    if (response.status === 401) {
+      fallbackMessage = 'Sua sessão expirou. Autentique-se novamente.';
+    } else if (response.status === 429) {
+      fallbackMessage = 'Muitas requisições em curto intervalo. Aguarde um instante.';
+    } else if (response.status === 503) {
+      fallbackMessage = 'Serviço de análise educacional temporariamente indisponível.';
+    }
+    throw await extractApiError(response, fallbackMessage);
+  }
+
+  const parsed = (await parseJsonOrThrow(response)) as unknown;
+  if (!isValidEducationalAnalysisResponseDTO(parsed)) {
+    throw new ApiHttpError(
+      response.status,
+      'INVALID_EDUCATIONAL_ANALYSIS_PAYLOAD',
+      'Resposta inesperada do servidor ao consultar análise educacional.'
     );
   }
 

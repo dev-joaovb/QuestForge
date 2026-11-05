@@ -7,6 +7,7 @@ import {
   EducationalAnalyticsDomainError,
   calculateAccuracyPercentage,
   determineTemporalTrend,
+  normalizeSubjectKey,
   MIN_QUESTIONS_FOR_DESCRIPTIVE_STATS,
   MIN_SIMULATIONS_FOR_TREND_ANALYSIS,
   MIN_QUESTIONS_PER_SUBJECT_FOR_RELIABILITY,
@@ -19,10 +20,18 @@ export interface EducationalAnalyticsServiceDependencies {
 }
 
 /**
- * Serviço de Analytics Educacional (Sprint 9.1).
+ * Serviço de Analytics Educacional (Sprint 9.1 / 9.1.1).
  *
  * Responsável por computar e agregar o perfil estatístico de desempenho do estudante
  * a partir de dados reais persistidos no PostgreSQL, sem mutações e sem exposição de PII.
+ *
+ * Refinamentos da Sprint 9.1.1:
+ * - ACH-01: Processamento em lotes estáveis (processQuestionAttemptsInBatches),
+ *   garantindo memória constante sem descartar histórico.
+ * - ACH-02: Distinção formal e desacoplamento entre pontuação oficial do exame
+ *   (regras de concurso) e acurácia pedagógica demonstrada (respostas reais).
+ * - ACH-04: Normalização determinística e canônica de disciplinas, unificando variações
+ *   de caixa ("Direito Constitucional", "direito constitucional") e espaçamentos múltiplos.
  */
 export class EducationalAnalyticsService {
   private readonly repository: IEducationalAnalyticsRepository;
@@ -48,33 +57,26 @@ export class EducationalAnalyticsService {
       );
     }
 
-    // Consulta paralela ao banco de dados com isolamento estrito
-    const [completedSimulations, questionAttempts, metrics] = await Promise.all([
+    // 1. Consulta paralela: simulados concluídos e métricas de streak/atividades
+    const [completedSimulations, metrics] = await Promise.all([
       this.repository.getCompletedSimulations(cleanId),
-      this.repository.getQuestionAttemptsWithMetadata(cleanId),
       this.repository.getStreakAndActivityMetrics(cleanId),
     ]);
 
-    // 1. Estatísticas Globais
-    let totalCorrectAnswers = 0;
-    let totalWrongAnswers = 0;
+    // 2. Apuração oficial de simulados
+    let officialTotalPoints = 0;
+    let simTotalWrong = 0;
     let totalDurationSeconds = 0;
     const simulationScores: number[] = [];
 
     for (const sim of completedSimulations) {
-      totalCorrectAnswers += sim.correctCount ?? 0;
-      totalWrongAnswers += sim.wrongCount ?? 0;
+      officialTotalPoints += sim.correctCount ?? 0;
+      simTotalWrong += sim.wrongCount ?? 0;
       totalDurationSeconds += sim.durationSeconds ?? 0;
       if (typeof sim.scorePercentage === 'number' && !Number.isNaN(sim.scorePercentage)) {
         simulationScores.push(sim.scorePercentage);
       }
     }
-
-    const totalAnsweredQuestions = totalCorrectAnswers + totalWrongAnswers;
-    const globalAccuracyPercentage = calculateAccuracyPercentage(
-      totalCorrectAnswers,
-      totalAnsweredQuestions
-    );
 
     const averageSimulationScore =
       simulationScores.length > 0
@@ -85,72 +87,142 @@ export class EducationalAnalyticsService {
           ) / 10
         : null;
 
-    // Tempo médio gasto por questão respondida
-    const validTimes = questionAttempts
-      .map((qa) => qa.timeSpentSeconds)
-      .filter((t): t is number => typeof t === 'number' && t > 0);
+    // 3. Estruturas para apuração pedagógica e agrupamentos via processamento em lotes (ACH-01)
+    let pedagogicalAnsweredQuestions = 0;
+    let pedagogicalCorrectAnswers = 0;
+    let pedagogicalWrongAnswers = 0;
 
-    const averageTimeSpentPerQuestionSeconds =
-      validTimes.length > 0
-        ? Math.round(validTimes.reduce((sum, t) => sum + t, 0) / validTimes.length)
-        : null;
+    let timeSpentSecondsSum = 0;
+    let timeSpentCount = 0;
 
-    // 2. Desempenho por Disciplina
     const subjectMap = new Map<
       string,
       {
+        displayLabel: string;
         totalAnswered: number;
         correctCount: number;
         wrongCount: number;
-        timeSpentList: number[];
+        timeSpentSum: number;
+        timeSpentCount: number;
       }
     >();
 
-    for (const attempt of questionAttempts) {
-      if (attempt.isCorrect === null || attempt.isCorrect === undefined) {
-        // Questões não respondidas ou pendentes não afetam a taxa de acertos da disciplina
-        continue;
-      }
+    const difficultyBuckets: Record<
+      QuestionDifficultyCategory,
+      { totalAnswered: number; correctCount: number; wrongCount: number }
+    > = {
+      EASY: { totalAnswered: 0, correctCount: 0, wrongCount: 0 },
+      MEDIUM: { totalAnswered: 0, correctCount: 0, wrongCount: 0 },
+      HARD: { totalAnswered: 0, correctCount: 0, wrongCount: 0 },
+      UNSPECIFIED: { totalAnswered: 0, correctCount: 0, wrongCount: 0 },
+    };
 
-      const rawSubject = attempt.question.subject?.trim();
-      const subject = rawSubject && rawSubject.length > 0 ? rawSubject : 'Não classificada';
+    // Processamento incremental em lotes estáveis (ACH-01)
+    await this.repository.processQuestionAttemptsInBatches(
+      cleanId,
+      (batch) => {
+        for (const attempt of batch) {
+          if (attempt.isCorrect === null || attempt.isCorrect === undefined) {
+            // Questões não respondidas ou deixadas em branco não constituem resposta pedagógica
+            continue;
+          }
 
-      let stats = subjectMap.get(subject);
-      if (!stats) {
-        stats = {
-          totalAnswered: 0,
-          correctCount: 0,
-          wrongCount: 0,
-          timeSpentList: [],
-        };
-        subjectMap.set(subject, stats);
-      }
+          // Métricas pedagógicas gerais (ACH-02)
+          pedagogicalAnsweredQuestions += 1;
+          if (attempt.isCorrect === true) {
+            pedagogicalCorrectAnswers += 1;
+          } else {
+            pedagogicalWrongAnswers += 1;
+          }
 
-      stats.totalAnswered += 1;
-      if (attempt.isCorrect === true) {
-        stats.correctCount += 1;
-      } else {
-        stats.wrongCount += 1;
-      }
+          if (typeof attempt.timeSpentSeconds === 'number' && attempt.timeSpentSeconds > 0) {
+            timeSpentSecondsSum += attempt.timeSpentSeconds;
+            timeSpentCount += 1;
+          }
 
-      if (typeof attempt.timeSpentSeconds === 'number' && attempt.timeSpentSeconds > 0) {
-        stats.timeSpentList.push(attempt.timeSpentSeconds);
-      }
-    }
+          // Agrupamento por disciplina normalizada (ACH-04)
+          const { normalizedKey, displayLabel } = normalizeSubjectKey(attempt.question.subject);
+          let subjectStats = subjectMap.get(normalizedKey);
+          if (!subjectStats) {
+            subjectStats = {
+              displayLabel,
+              totalAnswered: 0,
+              correctCount: 0,
+              wrongCount: 0,
+              timeSpentSum: 0,
+              timeSpentCount: 0,
+            };
+            subjectMap.set(normalizedKey, subjectStats);
+          }
 
-    const subjectPerformance: SubjectPerformanceItemDTO[] = Array.from(subjectMap.entries())
-      .map(([subject, stats]) => {
+          subjectStats.totalAnswered += 1;
+          if (attempt.isCorrect === true) {
+            subjectStats.correctCount += 1;
+          } else {
+            subjectStats.wrongCount += 1;
+          }
+
+          if (typeof attempt.timeSpentSeconds === 'number' && attempt.timeSpentSeconds > 0) {
+            subjectStats.timeSpentSum += attempt.timeSpentSeconds;
+            subjectStats.timeSpentCount += 1;
+          }
+
+          // Agrupamento por dificuldade
+          let category: QuestionDifficultyCategory = 'UNSPECIFIED';
+          const rawDifficulty = attempt.question.difficulty?.toUpperCase();
+          if (rawDifficulty === 'EASY' || rawDifficulty === 'MEDIUM' || rawDifficulty === 'HARD') {
+            category = rawDifficulty;
+          }
+
+          const diffBucket = difficultyBuckets[category];
+          diffBucket.totalAnswered += 1;
+          if (attempt.isCorrect === true) {
+            diffBucket.correctCount += 1;
+          } else {
+            diffBucket.wrongCount += 1;
+          }
+        }
+      },
+      1000
+    );
+
+    // 4. Taxas pedagógicas e conciliação de compatibilidade
+    const pedagogicalAccuracyPercentage = calculateAccuracyPercentage(
+      pedagogicalCorrectAnswers,
+      pedagogicalAnsweredQuestions
+    );
+
+    // Em cenários de históricos sem tentativas tabuladas, recorre aos totais de simulados
+    const totalAnsweredQuestions =
+      pedagogicalAnsweredQuestions > 0
+        ? pedagogicalAnsweredQuestions
+        : officialTotalPoints + simTotalWrong;
+
+    const totalCorrectAnswers =
+      pedagogicalAnsweredQuestions > 0 ? pedagogicalCorrectAnswers : officialTotalPoints;
+
+    const totalWrongAnswers =
+      pedagogicalAnsweredQuestions > 0 ? pedagogicalWrongAnswers : simTotalWrong;
+
+    const globalAccuracyPercentage =
+      pedagogicalAnsweredQuestions > 0
+        ? pedagogicalAccuracyPercentage
+        : calculateAccuracyPercentage(totalCorrectAnswers, totalAnsweredQuestions);
+
+    const averageTimeSpentPerQuestionSeconds =
+      timeSpentCount > 0 ? Math.round(timeSpentSecondsSum / timeSpentCount) : null;
+
+    // 5. Desempenho por Disciplina formatado
+    const subjectPerformance: SubjectPerformanceItemDTO[] = Array.from(subjectMap.values())
+      .map((stats) => {
         const accuracy = calculateAccuracyPercentage(stats.correctCount, stats.totalAnswered);
         const avgTime =
-          stats.timeSpentList.length > 0
-            ? Math.round(
-                stats.timeSpentList.reduce((sum, t) => sum + t, 0) /
-                  stats.timeSpentList.length
-              )
+          stats.timeSpentCount > 0
+            ? Math.round(stats.timeSpentSum / stats.timeSpentCount)
             : null;
 
         return {
-          subject,
+          subject: stats.displayLabel,
           totalAnswered: stats.totalAnswered,
           correctCount: stats.correctCount,
           wrongCount: stats.wrongCount,
@@ -166,37 +238,7 @@ export class EducationalAnalyticsService {
         return a.subject.localeCompare(b.subject);
       });
 
-    // 3. Desempenho por Nível de Dificuldade
-    const difficultyBuckets: Record<
-      QuestionDifficultyCategory,
-      { totalAnswered: number; correctCount: number; wrongCount: number }
-    > = {
-      EASY: { totalAnswered: 0, correctCount: 0, wrongCount: 0 },
-      MEDIUM: { totalAnswered: 0, correctCount: 0, wrongCount: 0 },
-      HARD: { totalAnswered: 0, correctCount: 0, wrongCount: 0 },
-      UNSPECIFIED: { totalAnswered: 0, correctCount: 0, wrongCount: 0 },
-    };
-
-    for (const attempt of questionAttempts) {
-      if (attempt.isCorrect === null || attempt.isCorrect === undefined) {
-        continue;
-      }
-
-      let category: QuestionDifficultyCategory = 'UNSPECIFIED';
-      const rawDifficulty = attempt.question.difficulty?.toUpperCase();
-      if (rawDifficulty === 'EASY' || rawDifficulty === 'MEDIUM' || rawDifficulty === 'HARD') {
-        category = rawDifficulty;
-      }
-
-      const bucket = difficultyBuckets[category];
-      bucket.totalAnswered += 1;
-      if (attempt.isCorrect === true) {
-        bucket.correctCount += 1;
-      } else {
-        bucket.wrongCount += 1;
-      }
-    }
-
+    // 6. Desempenho por Nível de Dificuldade
     const standardDifficulties: QuestionDifficultyCategory[] = [
       'EASY',
       'MEDIUM',
@@ -220,7 +262,7 @@ export class EducationalAnalyticsService {
       }
     );
 
-    // 4. Tendência Temporal
+    // 7. Tendência Temporal
     const temporalTrend = determineTemporalTrend(
       completedSimulations.map((s) => ({
         scorePercentage: s.scorePercentage,
@@ -228,7 +270,7 @@ export class EducationalAnalyticsService {
       }))
     );
 
-    // 5. Consistência e Engajamento
+    // 8. Consistência e Engajamento
     const consistency = {
       currentStreak: metrics.currentStreak,
       longestStreak: metrics.longestStreak,
@@ -237,7 +279,7 @@ export class EducationalAnalyticsService {
       totalStudyActivitiesCount: metrics.totalActivities,
     };
 
-    // 6. Suficiência Amostral
+    // 9. Suficiência Amostral
     const hasMinQuestionsForDescriptiveStats =
       totalAnsweredQuestions >= MIN_QUESTIONS_FOR_DESCRIPTIVE_STATS;
     const hasMinSimulationsForTrend =
@@ -279,11 +321,16 @@ export class EducationalAnalyticsService {
     return {
       globalStats: {
         completedSimulationsCount: completedSimulations.length,
+        averageSimulationScore,
+        officialTotalPoints,
+        pedagogicalAnsweredQuestions,
+        pedagogicalCorrectAnswers,
+        pedagogicalWrongAnswers,
+        pedagogicalAccuracyPercentage,
         totalAnsweredQuestions,
         totalCorrectAnswers,
         totalWrongAnswers,
         globalAccuracyPercentage,
-        averageSimulationScore,
         averageTimeSpentPerQuestionSeconds,
         totalDurationSeconds,
       },

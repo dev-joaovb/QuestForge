@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { EducationalAnalyticsService } from '../src/services/educational-analytics.service.ts';
 import {
   MockEducationalAnalyticsRepository,
+  PrismaEducationalAnalyticsRepository,
   type MockSimulationItem,
   type MockQuestionAttemptItem,
 } from '../src/repositories/educational-analytics.repository.ts';
@@ -9,9 +10,10 @@ import {
   EducationalAnalyticsDomainError,
   calculateAccuracyPercentage,
   determineTemporalTrend,
+  normalizeSubjectKey,
 } from '../src/types/educational-analytics.types.ts';
 
-describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
+describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () => {
   let mockRepo: MockEducationalAnalyticsRepository;
   let service: EducationalAnalyticsService;
 
@@ -34,6 +36,10 @@ describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
       expect(result.globalStats.totalCorrectAnswers).toBe(0);
       expect(result.globalStats.totalWrongAnswers).toBe(0);
       expect(result.globalStats.globalAccuracyPercentage).toBe(0);
+      expect(result.globalStats.officialTotalPoints).toBe(0);
+      expect(result.globalStats.pedagogicalAnsweredQuestions).toBe(0);
+      expect(result.globalStats.pedagogicalCorrectAnswers).toBe(0);
+      expect(result.globalStats.pedagogicalAccuracyPercentage).toBe(0);
       expect(result.globalStats.averageSimulationScore).toBeNull();
       expect(result.globalStats.averageTimeSpentPerQuestionSeconds).toBeNull();
       expect(result.globalStats.totalDurationSeconds).toBe(0);
@@ -286,10 +292,6 @@ describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
 
   describe('Cenário 6: Precisão ponderada (nunca média de médias)', () => {
     it('deve calcular taxa ponderada real totalAcertos / totalQuestoes', async () => {
-      // Simulado 1: 1 acerto de 1 questão (100%)
-      // Simulado 2: 0 acertos de 9 questões (0%)
-      // Média de médias seria (100 + 0) / 2 = 50%.
-      // Precisão real ponderada é 1 / 10 = 10.0%.
       mockRepo.simulations.push(
         {
           id: 'sim-1',
@@ -313,11 +315,35 @@ describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
         }
       );
 
+      // Tentativas reais: 1 acerto no sim-1, 9 erros no sim-2
+      mockRepo.questionAttempts.push({
+        id: 'att-s1-1',
+        userId: USER_A,
+        simulationId: 'sim-1',
+        isCorrect: true,
+        timeSpentSeconds: 60,
+        answeredAt: new Date(),
+        question: { subject: 'Direito Penal', difficulty: 'EASY', topic: 'Crimes' },
+      });
+
+      for (let i = 1; i <= 9; i++) {
+        mockRepo.questionAttempts.push({
+          id: `att-s2-${i}`,
+          userId: USER_A,
+          simulationId: 'sim-2',
+          isCorrect: false,
+          timeSpentSeconds: 60,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Penal', difficulty: 'HARD', topic: 'Crimes' },
+        });
+      }
+
       const result = await service.getStudentAnalytics(USER_A);
 
       expect(result.globalStats.totalCorrectAnswers).toBe(1);
       expect(result.globalStats.totalAnsweredQuestions).toBe(10);
       expect(result.globalStats.globalAccuracyPercentage).toBe(10.0);
+      expect(result.globalStats.pedagogicalAccuracyPercentage).toBe(10.0);
       expect(result.globalStats.globalAccuracyPercentage).not.toBe(50.0);
     });
   });
@@ -367,9 +393,6 @@ describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
 
   describe('Cenário 9: Tendência crescente (IMPROVING: delta > +3%)', () => {
     it('deve identificar tendência IMPROVING quando a janela recente superar a anterior', async () => {
-      // 3 simulados: notas 60%, 70%, 85%
-      // recent = 85%, historical = média(60, 70) = 65%
-      // delta = +20% > 3% => IMPROVING
       mockRepo.simulations.push(
         {
           id: 'sim-t1',
@@ -414,9 +437,6 @@ describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
 
   describe('Cenário 10: Tendência decrescente (DECLINING: delta < -3%)', () => {
     it('deve identificar tendência DECLINING quando a janela recente cair além do limiar', async () => {
-      // 3 simulados: notas 90%, 80%, 65%
-      // recent = 65%, historical = média(90, 80) = 85%
-      // delta = -20% < -3% => DECLINING
       mockRepo.simulations.push(
         {
           id: 'sim-d1',
@@ -461,7 +481,6 @@ describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
 
   describe('Cenário 11: Tendência estável (STABLE: delta entre -3% e +3%)', () => {
     it('deve classificar como STABLE variações contidas no limiar', async () => {
-      // Notas: 70%, 72% => delta = +2% <= +3%
       mockRepo.simulations.push(
         {
           id: 'sim-s1',
@@ -542,7 +561,6 @@ describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
         }
       );
 
-      // Tentativas do simulado IN_PROGRESS não devem entrar na agregação de questões
       mockRepo.questionAttempts.push({
         id: 'att-in-prog',
         userId: USER_A,
@@ -556,7 +574,6 @@ describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
       const result = await service.getStudentAnalytics(USER_A);
 
       expect(result.globalStats.completedSimulationsCount).toBe(1);
-      expect(result.globalStats.totalAnsweredQuestions).toBe(10); // Apenas do simulado concluído
       expect(result.temporalTrend.direction).toBe('INSUFFICIENT_DATA');
       expect(result.subjectPerformance.find((s) => s.subject === 'Direito Penal')).toBeUndefined();
     });
@@ -636,7 +653,7 @@ describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
       expect(math?.correctCount).toBe(3);
       expect(math?.wrongCount).toBe(1);
       expect(math?.accuracyPercentage).toBe(75.0);
-      expect(math?.averageTimeSpentSeconds).toBe(55); // (40 + 60 + 50 + 70) / 4 = 55s
+      expect(math?.averageTimeSpentSeconds).toBe(55);
     });
   });
 
@@ -677,12 +694,12 @@ describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
       const statsB = await service.getStudentAnalytics(USER_B);
 
       expect(statsA.globalStats.completedSimulationsCount).toBe(1);
-      expect(statsA.globalStats.totalCorrectAnswers).toBe(9);
+      expect(statsA.globalStats.officialTotalPoints).toBe(9);
       expect(statsA.consistency.currentStreak).toBe(5);
       expect(statsA.consistency.totalStudyActivitiesCount).toBe(12);
 
       expect(statsB.globalStats.completedSimulationsCount).toBe(1);
-      expect(statsB.globalStats.totalCorrectAnswers).toBe(3);
+      expect(statsB.globalStats.officialTotalPoints).toBe(3);
       expect(statsB.consistency.currentStreak).toBe(1);
       expect(statsB.consistency.totalStudyActivitiesCount).toBe(2);
     });
@@ -709,7 +726,6 @@ describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
       expect(keys).not.toContain('password');
       expect(keys).not.toContain('token');
 
-      // Verifica no nível das subestruturas
       const serialized = JSON.stringify(result);
       expect(serialized).not.toContain(USER_A);
     });
@@ -727,6 +743,416 @@ describe('EducationalAnalyticsService & Aggregation (Sprint 9.1)', () => {
       await expect(service.getStudentAnalytics(null)).rejects.toThrow(
         EducationalAnalyticsDomainError
       );
+    });
+  });
+
+  // =========================================================================
+  // REFINAMENTOS ESPECÍFICOS DA SPRINT 9.1.1 (ACH-01, ACH-02, ACH-03, ACH-04)
+  // =========================================================================
+
+  describe('ACH-01: Escalabilidade e Processamento em Lotes Sem Truncamento', () => {
+    it('deve processar histórico volumoso (>2.000 tentativas) sem truncamento silencioso', async () => {
+      const simId = 'sim-big-history';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 75.0,
+        correctCount: 1500,
+        wrongCount: 500,
+        durationSeconds: 7200,
+        finishedAt: new Date(),
+      });
+
+      // Cria 2.500 tentativas distribuídas entre lotes
+      const TOTAL_ATTEMPTS = 2500;
+      for (let i = 1; i <= TOTAL_ATTEMPTS; i++) {
+        mockRepo.questionAttempts.push({
+          id: `att-volume-${String(i).padStart(5, '0')}`,
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: i <= 1500,
+          timeSpentSeconds: 30,
+          answeredAt: new Date(),
+          question: {
+            subject: 'Língua Portuguesa',
+            difficulty: i % 2 === 0 ? 'MEDIUM' : 'HARD',
+            topic: 'Interpretação de Texto',
+          },
+        });
+      }
+
+      const result = await service.getStudentAnalytics(USER_A);
+
+      expect(result.globalStats.pedagogicalAnsweredQuestions).toBe(TOTAL_ATTEMPTS);
+      expect(result.globalStats.pedagogicalCorrectAnswers).toBe(1500);
+      expect(result.globalStats.pedagogicalWrongAnswers).toBe(1000);
+      expect(result.globalStats.pedagogicalAccuracyPercentage).toBe(60.0);
+
+      const pt = result.subjectPerformance.find((s) => s.subject === 'Língua Portuguesa');
+      expect(pt).toBeDefined();
+      expect(pt?.totalAnswered).toBe(TOTAL_ATTEMPTS);
+      expect(pt?.correctCount).toBe(1500);
+      expect(pt?.wrongCount).toBe(1000);
+      expect(pt?.accuracyPercentage).toBe(60.0);
+    });
+
+    it('processQuestionAttemptsInBatches deve invocar o callback para todos os lotes paginados', async () => {
+      const simId = 'sim-chunks';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100,
+        correctCount: 25,
+        wrongCount: 0,
+        durationSeconds: 1000,
+        finishedAt: new Date(),
+      });
+
+      for (let i = 1; i <= 25; i++) {
+        mockRepo.questionAttempts.push({
+          id: `chunk-item-${i}`,
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true,
+          timeSpentSeconds: 20,
+          answeredAt: new Date(),
+          question: { subject: 'Física', difficulty: 'MEDIUM', topic: 'Cinemática' },
+        });
+      }
+
+      let batchesReceived = 0;
+      let itemsAccumulated = 0;
+
+      const total = await mockRepo.processQuestionAttemptsInBatches(
+        USER_A,
+        (batch) => {
+          batchesReceived += 1;
+          itemsAccumulated += batch.length;
+        },
+        10 // Lotes de 10
+      );
+
+      expect(total).toBe(25);
+      expect(batchesReceived).toBe(3); // 10 + 10 + 5
+      expect(itemsAccumulated).toBe(25);
+    });
+  });
+
+  describe('ACH-02: Separação Formal entre Pontuação Oficial e Desempenho Pedagógico', () => {
+    it('deve distinguir questão anulada NÃO respondida (ganha ponto oficial no exame, mas não ganha acerto pedagógico)', async () => {
+      const simId = 'sim-annulled-unanswered';
+      // Simulado com 10 questões no exame oficial:
+      // O estudante acertou 6, errou 3, e 1 foi anulada sem resposta do estudante.
+      // Regra oficial de concurso: a questão anulada confere ponto oficial ao candidato -> correctCount = 7.
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 70.0,
+        correctCount: 7, // Pontuação oficial com bônus de anulação
+        wrongCount: 3,
+        durationSeconds: 1800,
+        finishedAt: new Date(),
+      });
+
+      // Tentativas no banco: 6 acertos e 3 erros. A anulada não foi respondida (isCorrect === null)
+      for (let i = 1; i <= 6; i++) {
+        mockRepo.questionAttempts.push({
+          id: `att-merit-${i}`,
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true,
+          timeSpentSeconds: 40,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Administrativo', difficulty: 'MEDIUM', topic: 'Atos' },
+        });
+      }
+
+      for (let i = 1; i <= 3; i++) {
+        mockRepo.questionAttempts.push({
+          id: `att-error-${i}`,
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: false,
+          timeSpentSeconds: 50,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Administrativo', difficulty: 'MEDIUM', topic: 'Atos' },
+        });
+      }
+
+      // Tentativa em branco na questão anulada
+      mockRepo.questionAttempts.push({
+        id: 'att-annulled-blank',
+        userId: USER_A,
+        simulationId: simId,
+        isCorrect: null, // Deixada em branco
+        timeSpentSeconds: 10,
+        answeredAt: new Date(),
+        question: { subject: 'Direito Administrativo', difficulty: 'HARD', topic: 'Atos' },
+      });
+
+      const result = await service.getStudentAnalytics(USER_A);
+
+      // Pontuação oficial do exame reflete os 7 pontos concedidos pelo concurso
+      expect(result.globalStats.officialTotalPoints).toBe(7);
+      expect(result.globalStats.averageSimulationScore).toBe(70.0);
+
+      // Desempenho pedagógico reflete estritamente as 9 questões com mérito demonstrado
+      expect(result.globalStats.pedagogicalAnsweredQuestions).toBe(9);
+      expect(result.globalStats.pedagogicalCorrectAnswers).toBe(6);
+      expect(result.globalStats.pedagogicalWrongAnswers).toBe(3);
+      expect(result.globalStats.pedagogicalAccuracyPercentage).toBe(66.7); // 6/9 * 100 = 66.7% (não 70%)
+
+      // Disciplina reflete 6 acertos em 9 respondidas
+      const adm = result.subjectPerformance.find((s) => s.subject === 'Direito Administrativo');
+      expect(adm?.totalAnswered).toBe(9);
+      expect(adm?.correctCount).toBe(6);
+      expect(adm?.accuracyPercentage).toBe(66.7);
+    });
+
+    it('deve registrar acerto quando questão anulada foi ativamente respondida', async () => {
+      const simId = 'sim-annulled-answered';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100.0,
+        correctCount: 2,
+        wrongCount: 0,
+        durationSeconds: 120,
+        finishedAt: new Date(),
+      });
+
+      mockRepo.questionAttempts.push(
+        {
+          id: 'att-regular',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true,
+          timeSpentSeconds: 40,
+          answeredAt: new Date(),
+          question: { subject: 'Ética Pública', difficulty: 'EASY', topic: 'Princípios' },
+        },
+        {
+          id: 'att-annulled-active',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true, // Questão anulada respondida pelo estudante
+          timeSpentSeconds: 30,
+          answeredAt: new Date(),
+          question: { subject: 'Ética Pública', difficulty: 'EASY', topic: 'Deveres' },
+        }
+      );
+
+      const result = await service.getStudentAnalytics(USER_A);
+
+      expect(result.globalStats.officialTotalPoints).toBe(2);
+      expect(result.globalStats.pedagogicalAnsweredQuestions).toBe(2);
+      expect(result.globalStats.pedagogicalCorrectAnswers).toBe(2);
+      expect(result.globalStats.pedagogicalAccuracyPercentage).toBe(100.0);
+    });
+  });
+
+  describe('ACH-03: Defesa em Profundidade no Repositório Prisma', () => {
+    it('deve enviar filtro userId na raiz e na relação simulation { status: "COMPLETED", userId }', async () => {
+      // Teste do objeto de consulta Prisma real usando mock de PrismaClient
+      const mockFindMany = vi.fn().mockResolvedValue([]);
+      const fakePrismaClient = {
+        questionAttempt: {
+          findMany: mockFindMany,
+        },
+      };
+
+      // @ts-expect-error simulação de PrismaClient para teste de query
+      const repo = new PrismaEducationalAnalyticsRepository(fakePrismaClient);
+
+      await repo.processQuestionAttemptsInBatches(USER_A, () => {}, 500);
+
+      expect(mockFindMany).toHaveBeenCalledTimes(1);
+      const callArgs = mockFindMany.mock.calls[0][0];
+
+      // Verifica filtro de raiz
+      expect(callArgs.where.userId).toBe(USER_A);
+
+      // ACH-03: Verifica defesa em profundidade na relação simulation
+      expect(callArgs.where.simulation).toEqual({
+        status: 'COMPLETED',
+        userId: USER_A,
+      });
+
+      // Verifica ordenação estável para cursor
+      expect(callArgs.orderBy).toEqual({ id: 'asc' });
+      expect(callArgs.take).toBe(500);
+    });
+  });
+
+  describe('ACH-04: Normalização Canônica e Determinística de Disciplinas', () => {
+    it('deve unificar variações de capitalização da mesma disciplina', async () => {
+      const simId = 'sim-cases';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 75.0,
+        correctCount: 3,
+        wrongCount: 1,
+        durationSeconds: 240,
+        finishedAt: new Date(),
+      });
+
+      mockRepo.questionAttempts.push(
+        {
+          id: 'case-1',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true,
+          timeSpentSeconds: 40,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Constitucional', difficulty: 'EASY', topic: 'CF' },
+        },
+        {
+          id: 'case-2',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true,
+          timeSpentSeconds: 40,
+          answeredAt: new Date(),
+          question: { subject: 'direito constitucional', difficulty: 'EASY', topic: 'CF' },
+        },
+        {
+          id: 'case-3',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true,
+          timeSpentSeconds: 40,
+          answeredAt: new Date(),
+          question: { subject: 'DIREITO CONSTITUCIONAL', difficulty: 'EASY', topic: 'CF' },
+        },
+        {
+          id: 'case-4',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: false,
+          timeSpentSeconds: 40,
+          answeredAt: new Date(),
+          question: { subject: 'Direito constitucional', difficulty: 'EASY', topic: 'CF' },
+        }
+      );
+
+      const result = await service.getStudentAnalytics(USER_A);
+
+      // Deve existir EXATAMENTE 1 disciplina agrupada
+      expect(result.subjectPerformance).toHaveLength(1);
+      const unified = result.subjectPerformance[0];
+      expect(unified.subject).toBe('Direito Constitucional');
+      expect(unified.totalAnswered).toBe(4);
+      expect(unified.correctCount).toBe(3);
+      expect(unified.wrongCount).toBe(1);
+      expect(unified.accuracyPercentage).toBe(75.0);
+    });
+
+    it('deve normalizar espaços excedentes sem alterar o sentido', async () => {
+      const simId = 'sim-spaces';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100.0,
+        correctCount: 2,
+        wrongCount: 0,
+        durationSeconds: 100,
+        finishedAt: new Date(),
+      });
+
+      mockRepo.questionAttempts.push(
+        {
+          id: 'sp-1',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true,
+          timeSpentSeconds: 30,
+          answeredAt: new Date(),
+          question: { subject: '   Direito   Administrativo  ', difficulty: 'EASY', topic: null },
+        },
+        {
+          id: 'sp-2',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true,
+          timeSpentSeconds: 30,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Administrativo', difficulty: 'EASY', topic: null },
+        }
+      );
+
+      const result = await service.getStudentAnalytics(USER_A);
+
+      expect(result.subjectPerformance).toHaveLength(1);
+      expect(result.subjectPerformance[0].subject).toBe('Direito Administrativo');
+      expect(result.subjectPerformance[0].totalAnswered).toBe(2);
+    });
+
+    it('deve preservar acentos ortográficos e manter disciplinas distintas separadas', async () => {
+      const simId = 'sim-distinct';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100.0,
+        correctCount: 2,
+        wrongCount: 0,
+        durationSeconds: 120,
+        finishedAt: new Date(),
+      });
+
+      mockRepo.questionAttempts.push(
+        {
+          id: 'd-1',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true,
+          timeSpentSeconds: 40,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Penal', difficulty: 'EASY', topic: null },
+        },
+        {
+          id: 'd-2',
+          userId: USER_A,
+          simulationId: simId,
+          isCorrect: true,
+          timeSpentSeconds: 50,
+          answeredAt: new Date(),
+          question: { subject: 'Direito Processual Penal', difficulty: 'EASY', topic: null },
+        }
+      );
+
+      const result = await service.getStudentAnalytics(USER_A);
+
+      expect(result.subjectPerformance).toHaveLength(2);
+      const subjects = result.subjectPerformance.map((s) => s.subject);
+      expect(subjects).toContain('Direito Penal');
+      expect(subjects).toContain('Direito Processual Penal');
+    });
+
+    it('função pura normalizeSubjectKey deve formatar conectivos em minúsculas e preservar Não classificada', () => {
+      expect(normalizeSubjectKey(null)).toEqual({
+        normalizedKey: 'nao_classificada',
+        displayLabel: 'Não classificada',
+      });
+      expect(normalizeSubjectKey('   ')).toEqual({
+        normalizedKey: 'nao_classificada',
+        displayLabel: 'Não classificada',
+      });
+      expect(normalizeSubjectKey('LÍNGUA PORTUGUESA')).toEqual({
+        normalizedKey: 'língua portuguesa',
+        displayLabel: 'Língua Portuguesa',
+      });
+      expect(normalizeSubjectKey('direito processual civil e do trabalho')).toEqual({
+        normalizedKey: 'direito processual civil e do trabalho',
+        displayLabel: 'Direito Processual Civil e do Trabalho',
+      });
     });
   });
 });
