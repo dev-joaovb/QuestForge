@@ -33,7 +33,7 @@ import type {
   AiQuestionExtractionResult,
   ExtractedQuestionDraft,
 } from '../src/types/ai-extraction.types.ts';
-import { buildRealPdfBuffer } from './pdf-document.service.test.ts';
+import { buildRealPdfBuffer } from './helpers/pdf-test.helper.ts';
 
 class MockAiQuestionExtractionService implements IAiQuestionExtractionService {
   public available = true;

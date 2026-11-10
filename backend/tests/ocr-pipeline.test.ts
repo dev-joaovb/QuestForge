@@ -21,7 +21,7 @@ import type {
   PutPrivateObjectInput,
   StoredPrivateObjectInfo,
 } from '../src/services/storage.service.ts';
-import { buildRealPdfBuffer } from './pdf-document.service.test.ts';
+import { buildRealPdfBuffer } from './helpers/pdf-test.helper.ts';
 
 class InMemoryTestStorage implements IObjectStorageService {
   public objects = new Map<string, Buffer>();

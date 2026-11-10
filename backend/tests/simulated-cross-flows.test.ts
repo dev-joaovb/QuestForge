@@ -30,7 +30,7 @@ import {
   PdfDocumentDomainError,
   type PdfDocumentDetailDTO,
 } from '../src/types/pdf-document.types.ts';
-import { buildRealPdfBuffer } from './pdf-document.service.test.ts';
+import { buildRealPdfBuffer } from './helpers/pdf-test.helper.ts';
 
 describe('Suíte de Regressão Funcional e Fluxos Simulados Multimodulares (Sprint 10.4)', () => {
   const CSRF_HEADERS = {

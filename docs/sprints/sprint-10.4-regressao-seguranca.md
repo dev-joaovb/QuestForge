@@ -101,19 +101,27 @@ Durante as verificações da Sprint 10.4, os seguintes pontos foram identificado
 3. **Auditoria de Omissão de `objectKey` na API Pública:**
    - *Arquivo:* `backend/src/types/pdf-document.types.ts` e `backend/src/controllers/pdf-document.controller.ts`
    - *Verificação:* Confirmado que `PdfDocumentDetailDTO` não expõe `objectKey` nem `bucketName`, mantendo os identificadores de bucket e chave interna do MinIO inacessíveis a clientes externos.
+4. **Precisão da Defesa contra Prompt Injection e Manipulação de IA (ACH-SEC-02):**
+   - *Arquitetura:* Modelos de linguagem generativos (LLMs) possuem suscetibilidade inerente a injeção de instruções indiretas, não sendo tecnicamente viável alegar "imunidade absoluta" ou "eliminação completa".
+   - *Estratégia Real de Defesa em Profundidade:* O QuestForge implementa uma abordagem defensiva pragmática de duas pontas:
+     - **Na Entrada:** Sanitização léxica de parâmetros de consulta, exclusão rigorosa de PII/credenciais, e encapsulamento explícito do texto não confiável via `JSON.stringify` sob a diretiva de sistema de que o conteúdo do documento é dado estrito e não instrução de controle (`untrustedDocumentPayload`).
+     - **Na Saída:** Validação determinística estrita da resposta da IA através de schemas Zod rígidos (`.parse()`), verificação de consistência matemática dos totais de questões e tópicos pedagógicos, e rejeição imediata com transição transparente para o fallback determinístico (`source: 'DETERMINISTIC_FALLBACK'`) caso qualquer instrução adversária tente adulterar a estrutura, os identificadores ou a semântica da resposta.
 
 ---
 
-### 6. Limitações Conhecidas dos Mocks e Validações Futuras (Sprint 11)
+### 6. Taxonomia dos Testes e Limitações Herméticas (ACH-TEST-01 e ACH-TEST-02)
 
-As seguintes validações não puderam ser executadas na Sprint 10.4 por respeito absoluto à fronteira de isolamento hermético (proibição de iniciar infraestrutura real):
+Para garantir clareza epistemológica e evitar falsas suposições de cobertura (ACH-TEST-02), a suíte do QuestForge é explicitamente classificada em quatro categorias funcionais:
 
-1. **OCR Real (Tesseract / EasyOCR):**
-   - A extração digital de PDFs baseada em streams de texto (`pdfjs-dist`) foi validada hermeticamente com buffers binários reais. O pipeline de OCR ótico sobre imagens escaneadas permanece simulado com `UnconfiguredOcrService` e retorno honesto `OCR_UNAVAILABLE`, devendo ser homologado na Sprint 11 com binários reais.
-2. **Conexões de Rede Reais com PostgreSQL, MinIO e Ollama:**
-   - Todos os testes de concorrência, transações atômicas e timeouts foram executados contra mocks em memória (`MockEducationalAnalyticsRepository`, `MockUserStreakRepository`) e handlers do Express. Conexões de rede TCP/IP reais (porta 5432, porta 9000 e porta 11434) serão validadas na Sprint 11 com Docker Compose em ambiente Debian.
-3. **Testes de Integração Real Ignorados:**
-   - Os 4 testes de integração real (`backend/tests/database.integration.test.ts`, `backend/tests/auth.integration.test.ts`, `backend/tests/pdf-document.integration.test.ts` e `backend/tests/question.integration.test.ts`) continuam com flag `.skip()` e aguardam a execução dos containers oficiais na Sprint 11.
+1. **Testes Unitários Puros:**
+   - Exercitam métodos isolados de domínio, cálculo determinístico de streaks, algoritmos de apuração e validadores Zod sem interação de rede ou I/O.
+2. **Testes HTTP Herméticos (Controllers / Handlers):**
+   - Testam rotas Express via `supertest` com mocks dos controllers ou repositórios, verificando status HTTP, headers de segurança, CSRF, parsing JSON e schemas de resposta.
+3. **Testes de Integração Hermética Multicamada (Mocks em Memória):**
+   - Testam a interação entre múltiplos serviços (ex.: simulados + streak + analytics + IA determinística) orquestrados com implementações de repositório em memória (`MockSimulationRepository`, `MockEducationalAnalyticsRepository`), garantindo regras de negócio consistentes sem tocar o disco ou a rede externa.
+   - *Isolamento de Helpers (ACH-TEST-01):* O gerador binário de PDFs (`buildRealPdfBuffer`) foi desacoplado para `backend/tests/helpers/pdf-test.helper.ts`, garantindo que testes como `simulated-cross-flows.test.ts` e `ocr-pipeline.test.ts` executem unicamente seus próprios casos de teste quando invocados isoladamente.
+4. **Testes de Integração Real com Infraestrutura (Aguardando Sprint 11):**
+   - Os 4 testes com `.skip()` (`backend/tests/database.integration.test.ts`, `backend/tests/auth.integration.test.ts`, `backend/tests/pdf-document.integration.test.ts` e `backend/tests/question.integration.test.ts`) exigem sockets TCP reais do PostgreSQL (5432), MinIO (9000) e Ollama (11434). Estes testes serão formalmente executados e homologados na Sprint 11 sobre os containers reais no Debian.
 
 ---
 
@@ -121,5 +129,5 @@ As seguintes validações não puderam ser executadas na Sprint 10.4 por respeit
 
 A **Sprint 10.4 está concluída e homologada com 886 testes aprovados, zero erros no linter e build de produção aprovado.**
 
-- **A Sprint 10.5 (Auditoria Final do Pacote de Handoff e Checklist Pré-Implantação)** pode ser iniciada pelo usuário.
-- **A Sprint 11 permanece estritamente proibida** neste ambiente e será executada exclusivamente pelo usuário em novo chat no ambiente Debian.
+- **A Sprint 10.5 (Auditoria Final do Pacote de Handoff e Consolidação Documental)** foi autorizada e consolidou os ajustes de isolamento de helpers e documentação precisa.
+- **A Sprint 11 permanece estritamente proibida** no ambiente de desenvolvimento hermético e será executada exclusivamente pelo usuário em novo chat no ambiente Debian.
