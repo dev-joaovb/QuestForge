@@ -30,12 +30,23 @@ export function getPrismaClient(): PrismaClient {
   return globalThis.__questforgePrisma;
 }
 
+// Reutiliza verificações em andamento por instância de cliente (in-flight request coalescing),
+// evitando que requisições concorrentes de health check saturem o pool de conexões com queries SELECT 1 redundantes.
+const inFlightDatabaseChecks = new WeakMap<object, Promise<DatabaseHealthStatus>>();
+
 /**
  * Verifica a conectividade real com o PostgreSQL executando `SELECT 1`.
  * Nunca expõe strings de conexão, hosts internos ou credenciais em mensagens de erro.
+ *
+ * Nota de observabilidade e concorrência (ACH-HEALTH-01):
+ * O `Promise.race` impõe um limite de tempo (deadline) na camada do Node.js para
+ * não reter a resposta HTTP. Contudo, ele NÃO cancela a query SQL subjacente no
+ * driver Prisma ou no PostgreSQL. Para mitigar o consumo de conexões durante lentidão,
+ * chamadas simultâneas na mesma instância de cliente reutilizam a mesma promessa em andamento.
  */
 export async function checkDatabaseHealth(
-  customClient?: Pick<PrismaClient, '$queryRaw'>
+  customClient?: Pick<PrismaClient, '$queryRaw'>,
+  timeoutMs: number = 3000
 ): Promise<DatabaseHealthStatus> {
   if (!customClient && (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === '')) {
     return {
@@ -45,28 +56,67 @@ export async function checkDatabaseHealth(
     };
   }
 
-  const startedAt = Date.now();
-  try {
-    const client = customClient ?? getPrismaClient();
-    await client.$queryRaw`SELECT 1`;
-    const latencyMs = Date.now() - startedAt;
+  const client = customClient ?? getPrismaClient();
 
-    return {
-      status: 'up',
-      latencyMs,
-      message: 'Conectividade com PostgreSQL verificada com sucesso.',
-    };
-  } catch (error) {
-    const latencyMs = Date.now() - startedAt;
-    logger.error('database_health_check_failed', {
-      latencyMs,
-      errorName: error instanceof Error ? error.name : 'UnknownError',
-    });
-
-    return {
-      status: 'down',
-      latencyMs,
-      message: 'Não foi possível estabelecer conexão com o PostgreSQL.',
-    };
+  if (typeof client === 'object' && client !== null) {
+    const existing = inFlightDatabaseChecks.get(client);
+    if (existing) {
+      return existing;
+    }
   }
+
+  const checkPromise = (async (): Promise<DatabaseHealthStatus> => {
+    const startedAt = Date.now();
+    let timer: NodeJS.Timeout | undefined;
+
+    try {
+      const queryPromise = client.$queryRaw`SELECT 1`;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error('DATABASE_HEALTH_CHECK_TIMEOUT'));
+        }, timeoutMs);
+      });
+
+      await Promise.race([queryPromise, timeoutPromise]);
+      const latencyMs = Date.now() - startedAt;
+
+      return {
+        status: 'up',
+        latencyMs,
+        message: 'Conectividade com PostgreSQL verificada com sucesso.',
+      };
+    } catch (error) {
+      const latencyMs = Date.now() - startedAt;
+      const isTimeout =
+        error instanceof Error && error.message === 'DATABASE_HEALTH_CHECK_TIMEOUT';
+
+      logger.error('database_health_check_failed', {
+        latencyMs,
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+        isTimeout,
+      });
+
+      return {
+        status: 'down',
+        latencyMs,
+        message: isTimeout
+          ? `Tempo limite de ${timeoutMs}ms excedido na verificação do PostgreSQL.`
+          : 'Não foi possível estabelecer conexão com o PostgreSQL.',
+      };
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
+  })().finally(() => {
+    if (typeof client === 'object' && client !== null) {
+      inFlightDatabaseChecks.delete(client);
+    }
+  });
+
+  if (typeof client === 'object' && client !== null) {
+    inFlightDatabaseChecks.set(client, checkPromise);
+  }
+
+  return checkPromise;
 }

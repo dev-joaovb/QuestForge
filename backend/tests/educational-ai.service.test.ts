@@ -206,16 +206,26 @@ describe('EducationalAiService & Motor de IA (Sprint 9.2)', () => {
         }
       );
 
+      mockAnalyticsRepo.simulationQuestions.push(
+        { simulationId: 'sim-di-1', questionId: 'att-di-1', isAnnulledSnapshot: false },
+        { simulationId: 'sim-di-1', questionId: 'att-di-2', isAnnulledSnapshot: false },
+        { simulationId: 'sim-di-2', questionId: 'att-di-3', isAnnulledSnapshot: false },
+        { simulationId: 'sim-di-2', questionId: 'att-di-4', isAnnulledSnapshot: false },
+        { simulationId: 'sim-di-2', questionId: 'att-di-5', isAnnulledSnapshot: false },
+        { simulationId: 'sim-di-1', questionId: 'att-di-6', isAnnulledSnapshot: false },
+        { simulationId: 'sim-di-2', questionId: 'att-di-7', isAnnulledSnapshot: false }
+      );
+
       mockAnalyticsRepo.questionAttempts.push(
         // Direito Constitucional: 4 acertos, 1 erro = 80.0%
-        { id: 'att-di-1', userId: USER_ID, simulationId: 'sim-di-1', isCorrect: true, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-di-2', userId: USER_ID, simulationId: 'sim-di-1', isCorrect: true, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-di-3', userId: USER_ID, simulationId: 'sim-di-2', isCorrect: true, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-di-4', userId: USER_ID, simulationId: 'sim-di-2', isCorrect: true, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-di-5', userId: USER_ID, simulationId: 'sim-di-2', isCorrect: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-di-1', userId: USER_ID, simulationId: 'sim-di-1', isCorrect: true, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-di-2', userId: USER_ID, simulationId: 'sim-di-1', isCorrect: true, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-di-3', userId: USER_ID, simulationId: 'sim-di-2', isCorrect: true, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-di-4', userId: USER_ID, simulationId: 'sim-di-2', isCorrect: true, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-di-5', userId: USER_ID, simulationId: 'sim-di-2', isCorrect: false, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
         // Informática: 1 acerto, 1 erro = 50.0%
-        { id: 'att-di-6', userId: USER_ID, simulationId: 'sim-di-1', isCorrect: true, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } },
-        { id: 'att-di-7', userId: USER_ID, simulationId: 'sim-di-2', isCorrect: false, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } }
+        { id: 'att-di-6', userId: USER_ID, simulationId: 'sim-di-1', isCorrect: true, isAnnulled: false, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } },
+        { id: 'att-di-7', userId: USER_ID, simulationId: 'sim-di-2', isCorrect: false, isAnnulled: false, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } }
       );
 
       const customClient: IEducationalAiClient = {
@@ -258,16 +268,26 @@ describe('EducationalAiService & Motor de IA (Sprint 9.2)', () => {
         }
       );
 
+      mockAnalyticsRepo.simulationQuestions.push(
+        { simulationId: 'sim-valid-1', questionId: 'att-1', isAnnulledSnapshot: false },
+        { simulationId: 'sim-valid-1', questionId: 'att-2', isAnnulledSnapshot: false },
+        { simulationId: 'sim-valid-2', questionId: 'att-3', isAnnulledSnapshot: false },
+        { simulationId: 'sim-valid-2', questionId: 'att-4', isAnnulledSnapshot: false },
+        { simulationId: 'sim-valid-2', questionId: 'att-5', isAnnulledSnapshot: false },
+        { simulationId: 'sim-valid-1', questionId: 'att-6', isAnnulledSnapshot: false },
+        { simulationId: 'sim-valid-2', questionId: 'att-7', isAnnulledSnapshot: false }
+      );
+
       mockAnalyticsRepo.questionAttempts.push(
         // Direito Constitucional: 4 acertos, 1 erro = 80.0%
-        { id: 'att-1', userId: USER_ID, simulationId: 'sim-valid-1', isCorrect: true, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-2', userId: USER_ID, simulationId: 'sim-valid-1', isCorrect: true, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-3', userId: USER_ID, simulationId: 'sim-valid-2', isCorrect: true, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-4', userId: USER_ID, simulationId: 'sim-valid-2', isCorrect: true, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-5', userId: USER_ID, simulationId: 'sim-valid-2', isCorrect: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-1', userId: USER_ID, simulationId: 'sim-valid-1', isCorrect: true, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-2', userId: USER_ID, simulationId: 'sim-valid-1', isCorrect: true, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-3', userId: USER_ID, simulationId: 'sim-valid-2', isCorrect: true, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-4', userId: USER_ID, simulationId: 'sim-valid-2', isCorrect: true, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-5', userId: USER_ID, simulationId: 'sim-valid-2', isCorrect: false, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
         // Informática: 1 acerto, 1 erro = 50.0%
-        { id: 'att-6', userId: USER_ID, simulationId: 'sim-valid-1', isCorrect: true, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } },
-        { id: 'att-7', userId: USER_ID, simulationId: 'sim-valid-2', isCorrect: false, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } }
+        { id: 'att-6', userId: USER_ID, simulationId: 'sim-valid-1', isCorrect: true, isAnnulled: false, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } },
+        { id: 'att-7', userId: USER_ID, simulationId: 'sim-valid-2', isCorrect: false, isAnnulled: false, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } }
       );
 
       const response = await service.getEducationalAnalysis(USER_ID);
@@ -938,14 +958,24 @@ describe('EducationalAiService & Motor de IA (Sprint 9.2)', () => {
         { id: 'sim-r2-1', userId: USER_ID, status: 'COMPLETED', scorePercentage: 72.0, correctCount: 6, wrongCount: 4, durationSeconds: 1200, finishedAt: new Date('2026-11-01T10:00:00Z') },
         { id: 'sim-r2-2', userId: USER_ID, status: 'COMPLETED', scorePercentage: 80.0, correctCount: 8, wrongCount: 2, durationSeconds: 1200, finishedAt: new Date('2026-11-02T10:00:00Z') }
       );
+      mockAnalyticsRepo.simulationQuestions.push(
+        { simulationId: 'sim-r2-1', questionId: 'att-r2-1', isAnnulledSnapshot: false },
+        { simulationId: 'sim-r2-1', questionId: 'att-r2-2', isAnnulledSnapshot: false },
+        { simulationId: 'sim-r2-2', questionId: 'att-r2-3', isAnnulledSnapshot: false },
+        { simulationId: 'sim-r2-2', questionId: 'att-r2-4', isAnnulledSnapshot: false },
+        { simulationId: 'sim-r2-2', questionId: 'att-r2-5', isAnnulledSnapshot: false },
+        { simulationId: 'sim-r2-1', questionId: 'att-r2-6', isAnnulledSnapshot: false },
+        { simulationId: 'sim-r2-2', questionId: 'att-r2-7', isAnnulledSnapshot: false }
+      );
+
       mockAnalyticsRepo.questionAttempts.push(
-        { id: 'att-r2-1', userId: USER_ID, simulationId: 'sim-r2-1', isCorrect: true, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-r2-2', userId: USER_ID, simulationId: 'sim-r2-1', isCorrect: true, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-r2-3', userId: USER_ID, simulationId: 'sim-r2-2', isCorrect: true, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-r2-4', userId: USER_ID, simulationId: 'sim-r2-2', isCorrect: true, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-r2-5', userId: USER_ID, simulationId: 'sim-r2-2', isCorrect: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
-        { id: 'att-r2-6', userId: USER_ID, simulationId: 'sim-r2-1', isCorrect: true, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } },
-        { id: 'att-r2-7', userId: USER_ID, simulationId: 'sim-r2-2', isCorrect: false, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } }
+        { id: 'att-r2-1', userId: USER_ID, simulationId: 'sim-r2-1', isCorrect: true, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-r2-2', userId: USER_ID, simulationId: 'sim-r2-1', isCorrect: true, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-r2-3', userId: USER_ID, simulationId: 'sim-r2-2', isCorrect: true, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-r2-4', userId: USER_ID, simulationId: 'sim-r2-2', isCorrect: true, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-r2-5', userId: USER_ID, simulationId: 'sim-r2-2', isCorrect: false, isAnnulled: false, timeSpentSeconds: 45, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'CF' } },
+        { id: 'att-r2-6', userId: USER_ID, simulationId: 'sim-r2-1', isCorrect: true, isAnnulled: false, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } },
+        { id: 'att-r2-7', userId: USER_ID, simulationId: 'sim-r2-2', isCorrect: false, isAnnulled: false, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } }
       );
 
       mockAiClient.generateAnalysis = vi.fn().mockResolvedValue(validAiResponseJson);

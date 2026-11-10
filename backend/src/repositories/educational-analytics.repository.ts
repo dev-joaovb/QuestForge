@@ -138,7 +138,12 @@ export class PrismaEducationalAnalyticsRepository implements IEducationalAnalyti
       }
 
       const batch: QuestionAttemptWithMetadata[] = rawBatch.map((item) => {
-        const isAnnulled = annulledMap.get(`${item.simulationId}:${item.questionId}`) ?? false;
+        const snapshot = annulledMap.get(`${item.simulationId}:${item.questionId}`);
+        // Sprint 10.1 (ACH-SEC-01): Classificação tri-estado conservadora de anulação:
+        // - true: questão comprovadamente anulada no snapshot oficial de SimulationQuestion.
+        // - false: questão comprovadamente regular no snapshot oficial de SimulationQuestion.
+        // - null: estado desconhecido / ausência de snapshot correspondente (não assumir false).
+        const isAnnulled = typeof snapshot === 'boolean' ? snapshot : null;
         return {
           id: item.id,
           simulationId: item.simulationId,
@@ -221,7 +226,7 @@ export interface MockQuestionAttemptItem {
   isCorrect: boolean | null;
   timeSpentSeconds: number | null;
   answeredAt: Date | null;
-  isAnnulled?: boolean;
+  isAnnulled?: boolean | null;
   question: {
     subject: string | null;
     difficulty: string | null;
@@ -335,7 +340,11 @@ export class MockEducationalAnalyticsRepository implements IEducationalAnalytics
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((qa) => {
         const qId = qa.questionId ?? qa.id;
-        const isAnnulled = qa.isAnnulled ?? annulledMap.get(`${qa.simulationId}:${qId}`) ?? false;
+        const snapshot = annulledMap.get(`${qa.simulationId}:${qId}`);
+        // Sprint 10.1.1: O snapshot de SimulationQuestion é a única fonte da verdade,
+        // garantindo paridade estrita e absoluta com o PrismaEducationalAnalyticsRepository.
+        // O valor local qa.isAnnulled não sobrepõe nem atua como fallback quando ausente.
+        const isAnnulled = typeof snapshot === 'boolean' ? snapshot : null;
         return {
           id: qa.id,
           simulationId: qa.simulationId,

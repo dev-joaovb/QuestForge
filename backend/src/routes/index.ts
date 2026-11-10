@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { createHealthRouter, type HealthCheckDependencies } from './health.routes.ts';
+import { createReadyController, createLiveController } from '../controllers/health.controller.ts';
 import { createAuthRouter, type AuthRouterDependencies } from './auth.routes.ts';
 import {
   createQuestionRouter,
@@ -46,6 +47,8 @@ export function createApiRouter(deps?: ApiRouterDependencies): Router {
   const apiRouter = Router();
 
   apiRouter.use('/health', createHealthRouter(deps?.health));
+  apiRouter.get('/live', createLiveController());
+  apiRouter.get('/ready', createReadyController(deps?.health));
   apiRouter.use('/auth', createAuthRouter(deps?.auth));
   apiRouter.use(
     '/questions',

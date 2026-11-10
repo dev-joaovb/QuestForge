@@ -11,6 +11,7 @@ import {
   calculateAccuracyPercentage,
   determineTemporalTrend,
   normalizeSubjectKey,
+  type QuestionAttemptWithMetadata,
 } from '../src/types/educational-analytics.types.ts';
 
 describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () => {
@@ -85,11 +86,18 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         finishedAt: new Date('2026-03-01T10:00:00Z'),
       });
 
+      mockRepo.simulationQuestions.push({
+        simulationId: simId,
+        questionId: 'attempt-1',
+        isAnnulledSnapshot: false,
+      });
+
       mockRepo.questionAttempts.push({
         id: 'attempt-1',
         userId: USER_A,
         simulationId: simId,
         isCorrect: true,
+        isAnnulled: false,
         timeSpentSeconds: 60,
         answeredAt: new Date('2026-03-01T10:01:00Z'),
         question: {
@@ -125,11 +133,17 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
       });
 
       for (let i = 1; i <= 5; i++) {
+        mockRepo.simulationQuestions.push({
+          simulationId: simId,
+          questionId: `attempt-${i}`,
+          isAnnulledSnapshot: false,
+        });
         mockRepo.questionAttempts.push({
           id: `attempt-${i}`,
           userId: USER_A,
           simulationId: simId,
           isCorrect: i <= 4,
+          isAnnulled: false,
           timeSpentSeconds: 60,
           answeredAt: new Date(),
           question: {
@@ -168,11 +182,17 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
 
       // 6 questões de Direito Constitucional (5 acertos, 1 erro) => 83.3%, isReliable = true
       for (let i = 1; i <= 6; i++) {
+        mockRepo.simulationQuestions.push({
+          simulationId: simId,
+          questionId: `att-const-${i}`,
+          isAnnulledSnapshot: false,
+        });
         mockRepo.questionAttempts.push({
           id: `att-const-${i}`,
           userId: USER_A,
           simulationId: simId,
           isCorrect: i <= 5,
+          isAnnulled: false,
           timeSpentSeconds: 40,
           answeredAt: new Date(),
           question: {
@@ -185,11 +205,17 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
 
       // 3 questões de Informática (1 acerto, 2 erros) => 33.3%, isReliable = false (< 5 questões)
       for (let i = 1; i <= 3; i++) {
+        mockRepo.simulationQuestions.push({
+          simulationId: simId,
+          questionId: `att-info-${i}`,
+          isAnnulledSnapshot: false,
+        });
         mockRepo.questionAttempts.push({
           id: `att-info-${i}`,
           userId: USER_A,
           simulationId: simId,
           isCorrect: i === 1,
+          isAnnulled: false,
           timeSpentSeconds: 50,
           answeredAt: new Date(),
           question: {
@@ -237,12 +263,20 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         finishedAt: new Date(),
       });
 
+      mockRepo.simulationQuestions.push(
+        { simulationId: simId, questionId: 'q-easy', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'q-medium', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'q-hard', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'q-unspecified', isAnnulledSnapshot: false }
+      );
+
       mockRepo.questionAttempts.push(
         {
           id: 'q-easy',
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 30,
           answeredAt: new Date(),
           question: { subject: 'Português', difficulty: 'EASY', topic: 'Sintaxe' },
@@ -252,6 +286,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 40,
           answeredAt: new Date(),
           question: { subject: 'Português', difficulty: 'MEDIUM', topic: 'Morfologia' },
@@ -261,6 +296,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: simId,
           isCorrect: false,
+          isAnnulled: false,
           timeSpentSeconds: 80,
           answeredAt: new Date(),
           question: { subject: 'Português', difficulty: 'HARD', topic: 'Semântica' },
@@ -270,6 +306,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: simId,
           isCorrect: false,
+          isAnnulled: false,
           timeSpentSeconds: 50,
           answeredAt: new Date(),
           question: { subject: 'Português', difficulty: null, topic: null },
@@ -316,22 +353,34 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
       );
 
       // Tentativas reais: 1 acerto no sim-1, 9 erros no sim-2
+      mockRepo.simulationQuestions.push({
+        simulationId: 'sim-1',
+        questionId: 'att-s1-1',
+        isAnnulledSnapshot: false,
+      });
       mockRepo.questionAttempts.push({
         id: 'att-s1-1',
         userId: USER_A,
         simulationId: 'sim-1',
         isCorrect: true,
+        isAnnulled: false,
         timeSpentSeconds: 60,
         answeredAt: new Date(),
         question: { subject: 'Direito Penal', difficulty: 'EASY', topic: 'Crimes' },
       });
 
       for (let i = 1; i <= 9; i++) {
+        mockRepo.simulationQuestions.push({
+          simulationId: 'sim-2',
+          questionId: `att-s2-${i}`,
+          isAnnulledSnapshot: false,
+        });
         mockRepo.questionAttempts.push({
           id: `att-s2-${i}`,
           userId: USER_A,
           simulationId: 'sim-2',
           isCorrect: false,
+          isAnnulled: false,
           timeSpentSeconds: 60,
           answeredAt: new Date(),
           question: { subject: 'Direito Penal', difficulty: 'HARD', topic: 'Crimes' },
@@ -371,11 +420,18 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         finishedAt: new Date(),
       });
 
+      mockRepo.simulationQuestions.push({
+        simulationId: 'sim-nulls',
+        questionId: 'att-null-time',
+        isAnnulledSnapshot: false,
+      });
+
       mockRepo.questionAttempts.push({
         id: 'att-null-time',
         userId: USER_A,
         simulationId: 'sim-nulls',
         isCorrect: true,
+        isAnnulled: false,
         timeSpentSeconds: null,
         answeredAt: null,
         question: { subject: null, difficulty: null, topic: null },
@@ -561,6 +617,12 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         }
       );
 
+      mockRepo.simulationQuestions.push({
+        simulationId: 'sim-in-progress',
+        questionId: 'att-in-prog',
+        isAnnulledSnapshot: false,
+      });
+
       mockRepo.questionAttempts.push({
         id: 'att-in-prog',
         userId: USER_A,
@@ -607,12 +669,20 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         }
       );
 
+      mockRepo.simulationQuestions.push(
+        { simulationId: sim1, questionId: 'att-1', isAnnulledSnapshot: false },
+        { simulationId: sim1, questionId: 'att-2', isAnnulledSnapshot: false },
+        { simulationId: sim2, questionId: 'att-3', isAnnulledSnapshot: false },
+        { simulationId: sim2, questionId: 'att-4', isAnnulledSnapshot: false }
+      );
+
       mockRepo.questionAttempts.push(
         {
           id: 'att-1',
           userId: USER_A,
           simulationId: sim1,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 40,
           answeredAt: new Date(),
           question: { subject: 'Matemática', difficulty: 'EASY', topic: 'Álgebra' },
@@ -622,6 +692,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: sim1,
           isCorrect: false,
+          isAnnulled: false,
           timeSpentSeconds: 60,
           answeredAt: new Date(),
           question: { subject: 'Matemática', difficulty: 'MEDIUM', topic: 'Álgebra' },
@@ -631,6 +702,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: sim2,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 50,
           answeredAt: new Date(),
           question: { subject: 'Matemática', difficulty: 'EASY', topic: 'Álgebra' },
@@ -640,6 +712,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: sim2,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 70,
           answeredAt: new Date(),
           question: { subject: 'Matemática', difficulty: 'EASY', topic: 'Álgebra' },
@@ -767,11 +840,18 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
       // Cria 2.500 tentativas distribuídas entre lotes
       const TOTAL_ATTEMPTS = 2500;
       for (let i = 1; i <= TOTAL_ATTEMPTS; i++) {
+        const qId = `att-volume-${String(i).padStart(5, '0')}`;
+        mockRepo.simulationQuestions.push({
+          simulationId: simId,
+          questionId: qId,
+          isAnnulledSnapshot: false,
+        });
         mockRepo.questionAttempts.push({
-          id: `att-volume-${String(i).padStart(5, '0')}`,
+          id: qId,
           userId: USER_A,
           simulationId: simId,
           isCorrect: i <= 1500,
+          isAnnulled: false,
           timeSpentSeconds: 30,
           answeredAt: new Date(),
           question: {
@@ -811,11 +891,18 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
       });
 
       for (let i = 1; i <= 25; i++) {
+        const qId = `chunk-item-${i}`;
+        mockRepo.simulationQuestions.push({
+          simulationId: simId,
+          questionId: qId,
+          isAnnulledSnapshot: false,
+        });
         mockRepo.questionAttempts.push({
-          id: `chunk-item-${i}`,
+          id: qId,
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 20,
           answeredAt: new Date(),
           question: { subject: 'Física', difficulty: 'MEDIUM', topic: 'Cinemática' },
@@ -859,11 +946,17 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
 
       // Tentativas no banco: 6 acertos e 3 erros. A anulada não foi respondida (isCorrect === null)
       for (let i = 1; i <= 6; i++) {
+        mockRepo.simulationQuestions.push({
+          simulationId: simId,
+          questionId: `att-merit-${i}`,
+          isAnnulledSnapshot: false,
+        });
         mockRepo.questionAttempts.push({
           id: `att-merit-${i}`,
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 40,
           answeredAt: new Date(),
           question: { subject: 'Direito Administrativo', difficulty: 'MEDIUM', topic: 'Atos' },
@@ -871,11 +964,17 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
       }
 
       for (let i = 1; i <= 3; i++) {
+        mockRepo.simulationQuestions.push({
+          simulationId: simId,
+          questionId: `att-error-${i}`,
+          isAnnulledSnapshot: false,
+        });
         mockRepo.questionAttempts.push({
           id: `att-error-${i}`,
           userId: USER_A,
           simulationId: simId,
           isCorrect: false,
+          isAnnulled: false,
           timeSpentSeconds: 50,
           answeredAt: new Date(),
           question: { subject: 'Direito Administrativo', difficulty: 'MEDIUM', topic: 'Atos' },
@@ -883,11 +982,17 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
       }
 
       // Tentativa em branco na questão anulada
+      mockRepo.simulationQuestions.push({
+        simulationId: simId,
+        questionId: 'att-annulled-blank',
+        isAnnulledSnapshot: true,
+      });
       mockRepo.questionAttempts.push({
         id: 'att-annulled-blank',
         userId: USER_A,
         simulationId: simId,
         isCorrect: null, // Deixada em branco
+        isAnnulled: true,
         timeSpentSeconds: 10,
         answeredAt: new Date(),
         question: { subject: 'Direito Administrativo', difficulty: 'HARD', topic: 'Atos' },
@@ -1014,12 +1119,20 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         finishedAt: new Date(),
       });
 
+      mockRepo.simulationQuestions.push(
+        { simulationId: simId, questionId: 'case-1', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'case-2', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'case-3', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'case-4', isAnnulledSnapshot: false }
+      );
+
       mockRepo.questionAttempts.push(
         {
           id: 'case-1',
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 40,
           answeredAt: new Date(),
           question: { subject: 'Direito Constitucional', difficulty: 'EASY', topic: 'CF' },
@@ -1029,6 +1142,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 40,
           answeredAt: new Date(),
           question: { subject: 'direito constitucional', difficulty: 'EASY', topic: 'CF' },
@@ -1038,6 +1152,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 40,
           answeredAt: new Date(),
           question: { subject: 'DIREITO CONSTITUCIONAL', difficulty: 'EASY', topic: 'CF' },
@@ -1047,6 +1162,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: simId,
           isCorrect: false,
+          isAnnulled: false,
           timeSpentSeconds: 40,
           answeredAt: new Date(),
           question: { subject: 'Direito constitucional', difficulty: 'EASY', topic: 'CF' },
@@ -1078,12 +1194,18 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         finishedAt: new Date(),
       });
 
+      mockRepo.simulationQuestions.push(
+        { simulationId: simId, questionId: 'sp-1', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'sp-2', isAnnulledSnapshot: false }
+      );
+
       mockRepo.questionAttempts.push(
         {
           id: 'sp-1',
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 30,
           answeredAt: new Date(),
           question: { subject: '   Direito   Administrativo  ', difficulty: 'EASY', topic: null },
@@ -1093,6 +1215,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 30,
           answeredAt: new Date(),
           question: { subject: 'Direito Administrativo', difficulty: 'EASY', topic: null },
@@ -1119,12 +1242,18 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         finishedAt: new Date(),
       });
 
+      mockRepo.simulationQuestions.push(
+        { simulationId: simId, questionId: 'd-1', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'd-2', isAnnulledSnapshot: false }
+      );
+
       mockRepo.questionAttempts.push(
         {
           id: 'd-1',
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 40,
           answeredAt: new Date(),
           question: { subject: 'Direito Penal', difficulty: 'EASY', topic: null },
@@ -1134,6 +1263,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 50,
           answeredAt: new Date(),
           question: { subject: 'Direito Processual Penal', difficulty: 'EASY', topic: null },
@@ -1184,6 +1314,14 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         finishedAt: new Date('2026-03-10T12:00:00Z'),
       });
 
+      mockRepo.simulationQuestions.push(
+        { simulationId: simId, questionId: 'att-civil-1', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'att-civil-2', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'att-civil-3', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'att-civil-4', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'att-civil-annulled-unanswered', isAnnulledSnapshot: true }
+      );
+
       // 2 acertos demonstrados em Direito Civil
       mockRepo.questionAttempts.push(
         {
@@ -1191,6 +1329,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 60,
           answeredAt: new Date(),
           question: { subject: 'Direito Civil', difficulty: 'EASY', topic: 'Contratos' },
@@ -1200,6 +1339,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: simId,
           isCorrect: true,
+          isAnnulled: false,
           timeSpentSeconds: 60,
           answeredAt: new Date(),
           question: { subject: 'Direito Civil', difficulty: 'EASY', topic: 'Contratos' },
@@ -1213,6 +1353,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: simId,
           isCorrect: false,
+          isAnnulled: false,
           timeSpentSeconds: 60,
           answeredAt: new Date(),
           question: { subject: 'Direito Civil', difficulty: 'MEDIUM', topic: 'Contratos' },
@@ -1222,6 +1363,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
           userId: USER_A,
           simulationId: simId,
           isCorrect: false,
+          isAnnulled: false,
           timeSpentSeconds: 60,
           answeredAt: new Date(),
           question: { subject: 'Direito Civil', difficulty: 'MEDIUM', topic: 'Contratos' },
@@ -1234,6 +1376,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         userId: USER_A,
         simulationId: simId,
         isCorrect: null, // Sem resposta ativa
+        isAnnulled: true,
         timeSpentSeconds: 15,
         answeredAt: new Date(),
         question: { subject: 'Direito Civil', difficulty: 'HARD', topic: 'Contratos' },
@@ -1406,7 +1549,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
       expect(dh).toBeUndefined();
     });
 
-    it('deve processar tentativas quando a informação de anulação for desconhecida sem quebrar a execução', async () => {
+    it('deve neutralizar tentativa com estado de anulação desconhecido (ausência de snapshot) sem quebrar a execução', async () => {
       const simId = 'sim-unknown-annulled';
       mockRepo.simulations.push({
         id: simId,
@@ -1426,7 +1569,7 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
         simulationId: simId,
         questionId: 'q-orphan',
         isCorrect: true,
-        // isAnnulled omitido / não encontrado -> tratado como false por fallback seguro
+        // isAnnulled omitido / não encontrado -> tratado conservadoramente como null (desconhecido)
         timeSpentSeconds: 40,
         answeredAt: new Date(),
         question: { subject: 'Informática', difficulty: 'EASY', topic: 'Sistemas Operacionais' },
@@ -1434,9 +1577,820 @@ describe('EducationalAnalyticsService & Refinamentos (Sprint 9.1 / 9.1.1)', () =
 
       const stats = await service.getStudentAnalytics(USER_A);
 
+      // Sprint 10.1 (ACH-SEC-01): Ausência de snapshot não pontua nem conta nas métricas pedagógicas
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(0);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(0);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(0);
+      // Pontuação oficial do simulado é preservada
+      expect(stats.globalStats.officialTotalPoints).toBe(1);
+      expect(stats.globalStats.averageSimulationScore).toBe(100.0);
+    });
+  });
+
+  describe('Sprint 10.1: Hardening de Integridade Histórica e Resiliência do Analytics (ACH-SEC-01)', () => {
+    // 1. Questão comprovadamente regular
+    it('1. Questão comprovadamente regular deve ser contabilizada normalmente nas métricas pedagógicas', async () => {
+      const simId = 'sim-reg-10-1';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100.0,
+        correctCount: 1,
+        wrongCount: 0,
+        durationSeconds: 60,
+        finishedAt: new Date(),
+      });
+      mockRepo.simulationQuestions.push({
+        simulationId: simId,
+        questionId: 'q-reg',
+        isAnnulledSnapshot: false,
+      });
+      mockRepo.questionAttempts.push({
+        id: 'att-reg',
+        userId: USER_A,
+        simulationId: simId,
+        questionId: 'q-reg',
+        isCorrect: true,
+        timeSpentSeconds: 40,
+        answeredAt: new Date(),
+        question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'Direitos Fundamentais' },
+      });
+
+      const stats = await service.getStudentAnalytics(USER_A);
       expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(1);
       expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(1);
       expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(100.0);
+      expect(stats.subjectPerformance[0]?.subject).toBe('Direito Constitucional');
+      expect(stats.subjectPerformance[0]?.accuracyPercentage).toBe(100.0);
+    });
+
+    // 2. Questão comprovadamente anulada
+    it('2. Questão comprovadamente anulada deve ser neutralizada das métricas pedagógicas', async () => {
+      const simId = 'sim-ann-10-1';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100.0,
+        correctCount: 1, // Pontuação oficial de concurso
+        wrongCount: 0,
+        durationSeconds: 60,
+        finishedAt: new Date(),
+      });
+      mockRepo.simulationQuestions.push({
+        simulationId: simId,
+        questionId: 'q-ann',
+        isAnnulledSnapshot: true,
+      });
+      mockRepo.questionAttempts.push({
+        id: 'att-ann',
+        userId: USER_A,
+        simulationId: simId,
+        questionId: 'q-ann',
+        isCorrect: true, // Bonificação oficial
+        timeSpentSeconds: 40,
+        answeredAt: new Date(),
+        question: { subject: 'Direito Administrativo', difficulty: 'EASY', topic: 'Atos' },
+      });
+
+      const stats = await service.getStudentAnalytics(USER_A);
+      expect(stats.globalStats.officialTotalPoints).toBe(1);
+      expect(stats.globalStats.averageSimulationScore).toBe(100.0);
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(0);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(0);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(0);
+      expect(stats.subjectPerformance.find((s) => s.subject === 'Direito Administrativo')).toBeUndefined();
+    });
+
+    // 3. Tentativa sem SimulationQuestion (ausência de snapshot -> isAnnulled === null)
+    it('3. Tentativa sem SimulationQuestion deve resultar em isAnnulled === null no repositório', async () => {
+      const simId = 'sim-orphan-10-1';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100.0,
+        correctCount: 1,
+        wrongCount: 0,
+        durationSeconds: 60,
+        finishedAt: new Date(),
+      });
+      // NÃO adiciona em mockRepo.simulationQuestions e não passa isAnnulled
+      mockRepo.questionAttempts.push({
+        id: 'att-orphan-test',
+        userId: USER_A,
+        simulationId: simId,
+        questionId: 'q-no-snapshot',
+        isCorrect: true,
+        timeSpentSeconds: 30,
+        answeredAt: new Date(),
+        question: { subject: 'Informática', difficulty: 'EASY', topic: 'Hardware' },
+      });
+
+      const attempts = await mockRepo.getQuestionAttemptsWithMetadata(USER_A);
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0].isAnnulled).toBeNull();
+    });
+
+    // 4. Tentativa sem snapshot com isCorrect=true
+    it('4. Tentativa sem snapshot com isCorrect=true NÃO deve pontuar como acerto pedagógico', async () => {
+      const simId = 'sim-orphan-true';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100.0,
+        correctCount: 1,
+        wrongCount: 0,
+        durationSeconds: 50,
+        finishedAt: new Date(),
+      });
+      mockRepo.questionAttempts.push({
+        id: 'att-orphan-correct',
+        userId: USER_A,
+        simulationId: simId,
+        questionId: 'q-orphan-true',
+        isCorrect: true,
+        timeSpentSeconds: 50,
+        answeredAt: new Date(),
+        question: { subject: 'Direito Penal', difficulty: 'HARD', topic: 'Tipicidade' },
+      });
+
+      const stats = await service.getStudentAnalytics(USER_A);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(0);
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(0);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(0);
+      expect(stats.subjectPerformance.find((s) => s.subject === 'Direito Penal')).toBeUndefined();
+    });
+
+    // 5. Tentativa sem snapshot com isCorrect=false
+    it('5. Tentativa sem snapshot com isCorrect=false NÃO deve contar no denominador da acurácia pedagógica', async () => {
+      const simId = 'sim-orphan-false';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 0,
+        correctCount: 0,
+        wrongCount: 1,
+        durationSeconds: 50,
+        finishedAt: new Date(),
+      });
+      mockRepo.questionAttempts.push({
+        id: 'att-orphan-wrong',
+        userId: USER_A,
+        simulationId: simId,
+        questionId: 'q-orphan-false',
+        isCorrect: false,
+        timeSpentSeconds: 50,
+        answeredAt: new Date(),
+        question: { subject: 'Direito Tributário', difficulty: 'MEDIUM', topic: 'Impostos' },
+      });
+
+      const stats = await service.getStudentAnalytics(USER_A);
+      expect(stats.globalStats.pedagogicalWrongAnswers).toBe(0);
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(0);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(0);
+      expect(stats.subjectPerformance.find((s) => s.subject === 'Direito Tributário')).toBeUndefined();
+    });
+
+    // 6. Histórico misto com questões regulares, anuladas e desconhecidas
+    it('6. Histórico misto deve considerar estritamente as questões regulares para acurácia e disciplinas', async () => {
+      const simId = 'sim-mixed-10-1';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 80.0,
+        correctCount: 4,
+        wrongCount: 1,
+        durationSeconds: 400,
+        finishedAt: new Date(),
+      });
+
+      // Snapshots conhecidos
+      mockRepo.simulationQuestions.push(
+        { simulationId: simId, questionId: 'q-reg-1', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'q-reg-2', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'q-reg-3', isAnnulledSnapshot: false },
+        { simulationId: simId, questionId: 'q-ann-1', isAnnulledSnapshot: true }
+      );
+      // q-orphan-1 e q-orphan-2 NÃO possuem snapshot (desconhecidas)
+
+      mockRepo.questionAttempts.push(
+        // 2 regulares corretas em Constitucional
+        { id: 'att-m-1', userId: USER_A, simulationId: simId, questionId: 'q-reg-1', isCorrect: true, timeSpentSeconds: 30, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'EASY', topic: 'CF' } },
+        { id: 'att-m-2', userId: USER_A, simulationId: simId, questionId: 'q-reg-2', isCorrect: true, timeSpentSeconds: 30, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'EASY', topic: 'CF' } },
+        // 1 regular errada em Constitucional
+        { id: 'att-m-3', userId: USER_A, simulationId: simId, questionId: 'q-reg-3', isCorrect: false, timeSpentSeconds: 30, answeredAt: new Date(), question: { subject: 'Direito Constitucional', difficulty: 'EASY', topic: 'CF' } },
+        // 1 anulada respondida em Informática (ganha ponto oficial no exame)
+        { id: 'att-m-4', userId: USER_A, simulationId: simId, questionId: 'q-ann-1', isCorrect: true, timeSpentSeconds: 30, answeredAt: new Date(), question: { subject: 'Informática', difficulty: 'HARD', topic: 'Redes' } },
+        // 1 desconhecida/órfã com isCorrect=true em Direito Civil
+        { id: 'att-m-5', userId: USER_A, simulationId: simId, questionId: 'q-orphan-1', isCorrect: true, timeSpentSeconds: 30, answeredAt: new Date(), question: { subject: 'Direito Civil', difficulty: 'MEDIUM', topic: 'Posse' } },
+        // 1 desconhecida/órfã com isCorrect=false em Direito Civil
+        { id: 'att-m-6', userId: USER_A, simulationId: simId, questionId: 'q-orphan-2', isCorrect: false, timeSpentSeconds: 30, answeredAt: new Date(), question: { subject: 'Direito Civil', difficulty: 'MEDIUM', topic: 'Posse' } }
+      );
+
+      const stats = await service.getStudentAnalytics(USER_A);
+
+      // Apenas as 3 questões regulares entram no domínio pedagógico (2 acertos, 1 erro = 66.7%)
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(3);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(2);
+      expect(stats.globalStats.pedagogicalWrongAnswers).toBe(1);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(66.7);
+
+      // Disciplina Direito Constitucional
+      expect(stats.subjectPerformance).toHaveLength(1);
+      const constSubj = stats.subjectPerformance[0];
+      expect(constSubj.subject).toBe('Direito Constitucional');
+      expect(constSubj.totalAnswered).toBe(3);
+      expect(constSubj.correctCount).toBe(2);
+      expect(constSubj.wrongCount).toBe(1);
+      expect(constSubj.accuracyPercentage).toBe(66.7);
+
+      // Informática e Direito Civil neutralizadas
+      expect(stats.subjectPerformance.find((s) => s.subject === 'Informática')).toBeUndefined();
+      expect(stats.subjectPerformance.find((s) => s.subject === 'Direito Civil')).toBeUndefined();
+    });
+
+    // 7. Preservação da pontuação oficial
+    it('7. Preservação da pontuação oficial e nota do simulado independente de anulações ou snapshots ausentes', async () => {
+      const simId = 'sim-official-preserved';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 75.0,
+        correctCount: 3,
+        wrongCount: 1,
+        durationSeconds: 1500,
+        finishedAt: new Date(),
+      });
+
+      // Todas as tentativas são órfãs ou anuladas
+      mockRepo.questionAttempts.push(
+        { id: 'att-p-1', userId: USER_A, simulationId: simId, questionId: 'q-orphan-p1', isCorrect: true, timeSpentSeconds: 40, answeredAt: new Date(), question: { subject: 'Bioética', difficulty: null, topic: null } },
+        { id: 'att-p-2', userId: USER_A, simulationId: simId, questionId: 'q-orphan-p2', isCorrect: true, timeSpentSeconds: 40, answeredAt: new Date(), question: { subject: 'Bioética', difficulty: null, topic: null } }
+      );
+
+      const stats = await service.getStudentAnalytics(USER_A);
+      expect(stats.globalStats.officialTotalPoints).toBe(3);
+      expect(stats.globalStats.averageSimulationScore).toBe(75.0);
+      expect(stats.globalStats.completedSimulationsCount).toBe(1);
+      expect(stats.globalStats.totalDurationSeconds).toBe(1500);
+    });
+
+    // 8. Ausência de divisão por zero
+    it('8. Ausência de divisão por zero quando o estudante possui apenas tentativas desconhecidas ou anuladas', async () => {
+      const simId = 'sim-no-div-zero';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 50.0,
+        correctCount: 1,
+        wrongCount: 1,
+        durationSeconds: 120,
+        finishedAt: new Date(),
+      });
+      // 1 tentativa sem snapshot
+      mockRepo.questionAttempts.push({
+        id: 'att-ndz',
+        userId: USER_A,
+        simulationId: simId,
+        questionId: 'q-ndz',
+        isCorrect: true,
+        timeSpentSeconds: 40,
+        answeredAt: new Date(),
+        question: { subject: 'Ética', difficulty: 'EASY', topic: 'Conceitos' },
+      });
+
+      const stats = await service.getStudentAnalytics(USER_A);
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(0);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(0);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(0);
+      expect(Number.isNaN(stats.globalStats.pedagogicalAccuracyPercentage)).toBe(false);
+      expect(Number.isFinite(stats.globalStats.pedagogicalAccuracyPercentage)).toBe(true);
+      expect(stats.subjectPerformance).toEqual([]);
+    });
+
+    // 9. Isolamento entre usuários
+    it('9. Isolamento estrito entre usuários: tentativas desconhecidas ou regulares de outro estudante não contaminam o analytics', async () => {
+      const simA = 'sim-user-a';
+      const simB = 'sim-user-b';
+
+      mockRepo.simulations.push(
+        { id: simA, userId: USER_A, status: 'COMPLETED', scorePercentage: 100, correctCount: 1, wrongCount: 0, durationSeconds: 60, finishedAt: new Date() },
+        { id: simB, userId: USER_B, status: 'COMPLETED', scorePercentage: 50, correctCount: 1, wrongCount: 1, durationSeconds: 120, finishedAt: new Date() }
+      );
+
+      mockRepo.simulationQuestions.push(
+        { simulationId: simA, questionId: 'q-user-a', isAnnulledSnapshot: false },
+        { simulationId: simB, questionId: 'q-user-b', isAnnulledSnapshot: false }
+      );
+
+      mockRepo.questionAttempts.push(
+        { id: 'att-ua', userId: USER_A, simulationId: simA, questionId: 'q-user-a', isCorrect: true, timeSpentSeconds: 30, answeredAt: new Date(), question: { subject: 'Geografia', difficulty: 'EASY', topic: 'Clima' } },
+        // Tentativa de USER_B (com erro e com questão desconhecida)
+        { id: 'att-ub-1', userId: USER_B, simulationId: simB, questionId: 'q-user-b', isCorrect: false, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Geografia', difficulty: 'HARD', topic: 'Relevo' } },
+        { id: 'att-ub-orphan', userId: USER_B, simulationId: simB, questionId: 'q-orphan-b', isCorrect: true, timeSpentSeconds: 60, answeredAt: new Date(), question: { subject: 'Geografia', difficulty: 'HARD', topic: 'Relevo' } }
+      );
+
+      const statsA = await service.getStudentAnalytics(USER_A);
+      expect(statsA.globalStats.pedagogicalAnsweredQuestions).toBe(1);
+      expect(statsA.globalStats.pedagogicalCorrectAnswers).toBe(1);
+      expect(statsA.globalStats.pedagogicalAccuracyPercentage).toBe(100.0);
+      expect(statsA.subjectPerformance[0]?.subject).toBe('Geografia');
+      expect(statsA.subjectPerformance[0]?.totalAnswered).toBe(1);
+      expect(statsA.subjectPerformance[0]?.accuracyPercentage).toBe(100.0);
+    });
+
+    // 10. Processamento em múltiplos lotes
+    it('10. Processamento em múltiplos lotes mantém a classificação conservadora de cada tentativa', async () => {
+      const simId = 'sim-batch-mult';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 80.0,
+        correctCount: 20,
+        wrongCount: 5,
+        durationSeconds: 1000,
+        finishedAt: new Date(),
+      });
+
+      // 10 regulares, 5 anuladas, 5 desconhecidas = 20 tentativas
+      for (let i = 1; i <= 10; i++) {
+        mockRepo.simulationQuestions.push({ simulationId: simId, questionId: `q-b-reg-${i}`, isAnnulledSnapshot: false });
+        mockRepo.questionAttempts.push({
+          id: `att-b-${String(i).padStart(3, '0')}`,
+          userId: USER_A,
+          simulationId: simId,
+          questionId: `q-b-reg-${i}`,
+          isCorrect: true,
+          timeSpentSeconds: 20,
+          answeredAt: new Date(),
+          question: { subject: 'História', difficulty: 'EASY', topic: 'Brasil' },
+        });
+      }
+      for (let i = 11; i <= 15; i++) {
+        mockRepo.simulationQuestions.push({ simulationId: simId, questionId: `q-b-ann-${i}`, isAnnulledSnapshot: true });
+        mockRepo.questionAttempts.push({
+          id: `att-b-${String(i).padStart(3, '0')}`,
+          userId: USER_A,
+          simulationId: simId,
+          questionId: `q-b-ann-${i}`,
+          isCorrect: true,
+          timeSpentSeconds: 20,
+          answeredAt: new Date(),
+          question: { subject: 'História', difficulty: 'EASY', topic: 'Brasil' },
+        });
+      }
+      for (let i = 16; i <= 20; i++) {
+        // Sem simulationQuestion (desconhecidas)
+        mockRepo.questionAttempts.push({
+          id: `att-b-${String(i).padStart(3, '0')}`,
+          userId: USER_A,
+          simulationId: simId,
+          questionId: `q-b-orph-${i}`,
+          isCorrect: true,
+          timeSpentSeconds: 20,
+          answeredAt: new Date(),
+          question: { subject: 'História', difficulty: 'EASY', topic: 'Brasil' },
+        });
+      }
+
+      // Processar em lotes de 5
+      let batchCount = 0;
+      const collected: QuestionAttemptWithMetadata[] = [];
+      await mockRepo.processQuestionAttemptsInBatches(
+        USER_A,
+        (batch) => {
+          batchCount += 1;
+          collected.push(...batch);
+        },
+        5
+      );
+
+      expect(batchCount).toBe(4);
+      expect(collected).toHaveLength(20);
+      const regularCount = collected.filter((c) => c.isAnnulled === false).length;
+      const annulledCount = collected.filter((c) => c.isAnnulled === true).length;
+      const unknownCount = collected.filter((c) => c.isAnnulled === null).length;
+      expect(regularCount).toBe(10);
+      expect(annulledCount).toBe(5);
+      expect(unknownCount).toBe(5);
+
+      const stats = await service.getStudentAnalytics(USER_A);
+      // Somente as 10 regulares entram nas métricas
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(10);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(10);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(100.0);
+    });
+
+    // 11. Ausência de N+1
+    it('11. Ausência de N+1 no repositório Prisma: 1 única consulta simulationQuestion.findMany por lote', async () => {
+      const mockRawAttempts = [
+        { id: 'att-1', simulationId: 'sim-1', questionId: 'q-1', isCorrect: true, timeSpentSeconds: 30, answeredAt: new Date(), question: { subject: 'Direito', difficulty: 'EASY', topic: 'T' } },
+        { id: 'att-2', simulationId: 'sim-1', questionId: 'q-2', isCorrect: true, timeSpentSeconds: 30, answeredAt: new Date(), question: { subject: 'Direito', difficulty: 'EASY', topic: 'T' } },
+        { id: 'att-3', simulationId: 'sim-2', questionId: 'q-3', isCorrect: false, timeSpentSeconds: 30, answeredAt: new Date(), question: { subject: 'Direito', difficulty: 'EASY', topic: 'T' } },
+      ];
+
+      const mockFindManyAttempts = vi.fn().mockResolvedValueOnce(mockRawAttempts).mockResolvedValueOnce([]);
+      const mockFindManySimulationQuestions = vi.fn().mockResolvedValue([
+        { simulationId: 'sim-1', questionId: 'q-1', isAnnulledSnapshot: false },
+        // q-2 e q-3 sem snapshot
+      ]);
+
+      const fakePrismaClient = {
+        questionAttempt: { findMany: mockFindManyAttempts },
+        simulationQuestion: { findMany: mockFindManySimulationQuestions },
+      } as any;
+
+      const prismaRepo = new PrismaEducationalAnalyticsRepository(fakePrismaClient);
+      const batchesReceived: QuestionAttemptWithMetadata[][] = [];
+      const total = await prismaRepo.processQuestionAttemptsInBatches(
+        USER_A,
+        (batch) => {
+          batchesReceived.push(batch);
+        },
+        10
+      );
+
+      expect(total).toBe(3);
+      // Garantia total contra N+1: exatamente 1 chamada para o lote
+      expect(mockFindManySimulationQuestions).toHaveBeenCalledTimes(1);
+      expect(mockFindManySimulationQuestions).toHaveBeenCalledWith({
+        where: {
+          simulationId: { in: ['sim-1', 'sim-2'] },
+          questionId: { in: ['q-1', 'q-2', 'q-3'] },
+        },
+        select: {
+          simulationId: true,
+          questionId: true,
+          isAnnulledSnapshot: true,
+        },
+      });
+
+      // Validação do mapeamento tri-estado
+      const batch = batchesReceived[0];
+      expect(batch[0].isAnnulled).toBe(false); // q-1 comprovadamente regular
+      expect(batch[1].isAnnulled).toBeNull(); // q-2 sem snapshot -> null
+      expect(batch[2].isAnnulled).toBeNull(); // q-3 sem snapshot -> null
+    });
+
+    // 12. Paridade entre Mock e Prisma
+    it('12. Paridade estrita entre Mock e Prisma: ambos retornam isAnnulled === null para tentativas sem snapshot', async () => {
+      // 1. Prisma
+      const fakePrismaClient = {
+        questionAttempt: {
+          findMany: vi.fn()
+            .mockResolvedValueOnce([
+              { id: 'att-prism', simulationId: 'sim-p', questionId: 'q-no-sq', isCorrect: true, timeSpentSeconds: 40, answeredAt: new Date(), question: { subject: 'Matemática', difficulty: 'EASY', topic: 'Álgebra' } },
+            ])
+            .mockResolvedValueOnce([]),
+        },
+        simulationQuestion: {
+          findMany: vi.fn().mockResolvedValue([]), // nenhum snapshot encontrado
+        },
+      } as any;
+
+      const prismaRepo = new PrismaEducationalAnalyticsRepository(fakePrismaClient);
+      let prismaAttempt: QuestionAttemptWithMetadata | undefined;
+      await prismaRepo.processQuestionAttemptsInBatches(USER_A, (batch) => {
+        prismaAttempt = batch[0];
+      });
+
+      // 2. Mock
+      const localMockRepo = new MockEducationalAnalyticsRepository();
+      localMockRepo.simulations.push({
+        id: 'sim-p',
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100,
+        correctCount: 1,
+        wrongCount: 0,
+        durationSeconds: 100,
+        finishedAt: new Date(),
+      });
+      localMockRepo.questionAttempts.push({
+        id: 'att-mock',
+        userId: USER_A,
+        simulationId: 'sim-p',
+        questionId: 'q-no-sq',
+        isCorrect: true,
+        timeSpentSeconds: 40,
+        answeredAt: new Date(),
+        question: { subject: 'Matemática', difficulty: 'EASY', topic: 'Álgebra' },
+      });
+      const mockAttempts = await localMockRepo.getQuestionAttemptsWithMetadata(USER_A);
+
+      // Verificação de paridade exata
+      expect(prismaAttempt?.isAnnulled).toBeNull();
+      expect(mockAttempts[0].isAnnulled).toBeNull();
+      expect(prismaAttempt?.isAnnulled).toBe(mockAttempts[0].isAnnulled);
+    });
+  });
+
+  describe('Sprint 10.1.1: Precedência de Snapshot e Paridade Estrita entre Mock e Prisma', () => {
+    // 1. Tentativa com isAnnulled: false, snapshot true -> resultado true
+    it('1. Precedência de Snapshot: tentativa com isAnnulled: false e snapshot true deve resolver para isAnnulled === true', async () => {
+      const simId = 'sim-prec-1';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100,
+        correctCount: 1,
+        wrongCount: 0,
+        durationSeconds: 60,
+        finishedAt: new Date(),
+      });
+      // Snapshot oficial afirma que a questão foi ANULADA
+      mockRepo.simulationQuestions.push({
+        simulationId: simId,
+        questionId: 'q-prec-1',
+        isAnnulledSnapshot: true,
+      });
+      // Tentativa local declara isAnnulled: false (conflito / tentativa desatualizada)
+      mockRepo.questionAttempts.push({
+        id: 'att-prec-1',
+        userId: USER_A,
+        simulationId: simId,
+        questionId: 'q-prec-1',
+        isCorrect: true,
+        isAnnulled: false,
+        timeSpentSeconds: 30,
+        answeredAt: new Date(),
+        question: { subject: 'Direito Administrativo', difficulty: 'EASY', topic: 'Atos' },
+      });
+
+      const attempts = await mockRepo.getQuestionAttemptsWithMetadata(USER_A);
+      expect(attempts).toHaveLength(1);
+      // O snapshot prevalece soberanamente
+      expect(attempts[0].isAnnulled).toBe(true);
+
+      const stats = await service.getStudentAnalytics(USER_A);
+      // Sendo anulada, é neutralizada das métricas pedagógicas
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(0);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(0);
+    });
+
+    // 2. Tentativa com isAnnulled: true, snapshot false -> resultado false
+    it('2. Precedência de Snapshot: tentativa com isAnnulled: true e snapshot false deve resolver para isAnnulled === false', async () => {
+      const simId = 'sim-prec-2';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100,
+        correctCount: 1,
+        wrongCount: 0,
+        durationSeconds: 60,
+        finishedAt: new Date(),
+      });
+      // Snapshot oficial afirma que a questão é REGULAR
+      mockRepo.simulationQuestions.push({
+        simulationId: simId,
+        questionId: 'q-prec-2',
+        isAnnulledSnapshot: false,
+      });
+      // Tentativa local declara isAnnulled: true
+      mockRepo.questionAttempts.push({
+        id: 'att-prec-2',
+        userId: USER_A,
+        simulationId: simId,
+        questionId: 'q-prec-2',
+        isCorrect: true,
+        isAnnulled: true,
+        timeSpentSeconds: 30,
+        answeredAt: new Date(),
+        question: { subject: 'Direito Constitucional', difficulty: 'MEDIUM', topic: 'Poderes' },
+      });
+
+      const attempts = await mockRepo.getQuestionAttemptsWithMetadata(USER_A);
+      expect(attempts).toHaveLength(1);
+      // O snapshot prevalece soberanamente
+      expect(attempts[0].isAnnulled).toBe(false);
+
+      const stats = await service.getStudentAnalytics(USER_A);
+      // Sendo regular, computa integralmente no domínio pedagógico
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(1);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(1);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(100.0);
+    });
+
+    // 3. Tentativa com isAnnulled: false, snapshot ausente -> resultado null
+    it('3. Precedência de Snapshot: tentativa com isAnnulled: false e snapshot ausente deve resolver para isAnnulled === null', async () => {
+      const simId = 'sim-prec-3';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100,
+        correctCount: 1,
+        wrongCount: 0,
+        durationSeconds: 60,
+        finishedAt: new Date(),
+      });
+      // NÃO existe entrada em simulationQuestions (snapshot ausente / órfã)
+      // Tentativa local declara isAnnulled: false (não deve ser aceito como verdade tácita)
+      mockRepo.questionAttempts.push({
+        id: 'att-prec-3',
+        userId: USER_A,
+        simulationId: simId,
+        questionId: 'q-prec-3',
+        isCorrect: true,
+        isAnnulled: false,
+        timeSpentSeconds: 30,
+        answeredAt: new Date(),
+        question: { subject: 'Informática', difficulty: 'EASY', topic: 'Redes' },
+      });
+
+      const attempts = await mockRepo.getQuestionAttemptsWithMetadata(USER_A);
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0].isAnnulled).toBeNull();
+
+      const stats = await service.getStudentAnalytics(USER_A);
+      // Estado desconhecido (null) é neutralizado conservadoramente
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(0);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(0);
+    });
+
+    // 4. Tentativa sem isAnnulled, snapshot ausente -> resultado null
+    it('4. Precedência de Snapshot: tentativa sem isAnnulled e snapshot ausente deve resolver para isAnnulled === null', async () => {
+      const simId = 'sim-prec-4';
+      mockRepo.simulations.push({
+        id: simId,
+        userId: USER_A,
+        status: 'COMPLETED',
+        scorePercentage: 100,
+        correctCount: 1,
+        wrongCount: 0,
+        durationSeconds: 60,
+        finishedAt: new Date(),
+      });
+      // isAnnulled não informado e snapshot ausente
+      mockRepo.questionAttempts.push({
+        id: 'att-prec-4',
+        userId: USER_A,
+        simulationId: simId,
+        questionId: 'q-prec-4',
+        isCorrect: true,
+        timeSpentSeconds: 30,
+        answeredAt: new Date(),
+        question: { subject: 'Português', difficulty: 'HARD', topic: 'Crase' },
+      });
+
+      const attempts = await mockRepo.getQuestionAttemptsWithMetadata(USER_A);
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0].isAnnulled).toBeNull();
+
+      const stats = await service.getStudentAnalytics(USER_A);
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(0);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(0);
+    });
+
+    // 5. Mesma questão em simulados distintos com snapshots diferentes
+    it('5. Chave composta: mesma questão em simulados distintos resolve snapshots independentes sem colisão', async () => {
+      const sim1 = 'sim-diff-snap-1';
+      const sim2 = 'sim-diff-snap-2';
+      const sharedQuestionId = 'q-shared-concurso';
+
+      mockRepo.simulations.push(
+        { id: sim1, userId: USER_A, status: 'COMPLETED', scorePercentage: 100, correctCount: 1, wrongCount: 0, durationSeconds: 60, finishedAt: new Date('2026-03-01T10:00:00Z') },
+        { id: sim2, userId: USER_A, status: 'COMPLETED', scorePercentage: 100, correctCount: 1, wrongCount: 0, durationSeconds: 60, finishedAt: new Date('2026-03-02T10:00:00Z') }
+      );
+
+      // No Simulado 1, a questão era regular (snapshot false)
+      // No Simulado 2 (aplicação posterior pós-recurso), a mesma questão foi anulada (snapshot true)
+      mockRepo.simulationQuestions.push(
+        { simulationId: sim1, questionId: sharedQuestionId, isAnnulledSnapshot: false },
+        { simulationId: sim2, questionId: sharedQuestionId, isAnnulledSnapshot: true }
+      );
+
+      mockRepo.questionAttempts.push(
+        { id: 'att-shared-s1', userId: USER_A, simulationId: sim1, questionId: sharedQuestionId, isCorrect: true, timeSpentSeconds: 35, answeredAt: new Date(), question: { subject: 'Direito Penal', difficulty: 'MEDIUM', topic: 'Tipicidade' } },
+        { id: 'att-shared-s2', userId: USER_A, simulationId: sim2, questionId: sharedQuestionId, isCorrect: true, timeSpentSeconds: 35, answeredAt: new Date(), question: { subject: 'Direito Penal', difficulty: 'MEDIUM', topic: 'Tipicidade' } }
+      );
+
+      const attempts = await mockRepo.getQuestionAttemptsWithMetadata(USER_A);
+      expect(attempts).toHaveLength(2);
+
+      const attSim1 = attempts.find((a) => a.simulationId === sim1);
+      const attSim2 = attempts.find((a) => a.simulationId === sim2);
+
+      expect(attSim1?.isAnnulled).toBe(false);
+      expect(attSim2?.isAnnulled).toBe(true);
+
+      const stats = await service.getStudentAnalytics(USER_A);
+      // Apenas a tentativa do sim1 computa pedagogicamente
+      expect(stats.globalStats.pedagogicalAnsweredQuestions).toBe(1);
+      expect(stats.globalStats.pedagogicalCorrectAnswers).toBe(1);
+      expect(stats.globalStats.pedagogicalAccuracyPercentage).toBe(100.0);
+      // Ambas concedem ponto oficial nos simulados
+      expect(stats.globalStats.officialTotalPoints).toBe(2);
+    });
+
+    // 6. Paridade entre Mock e Prisma para todos esses cenários
+    it('6. Paridade estrita e absoluta entre Mock e Prisma para todos os cenários de precedência e chave composta', async () => {
+      const scenarios = [
+        { id: '1', simId: 'sim-p1', qId: 'q-p1', attemptIsAnnulled: false, snapshot: true, expected: true },
+        { id: '2', simId: 'sim-p2', qId: 'q-p2', attemptIsAnnulled: true, snapshot: false, expected: false },
+        { id: '3', simId: 'sim-p3', qId: 'q-p3', attemptIsAnnulled: false, snapshot: undefined, expected: null },
+        { id: '4', simId: 'sim-p4', qId: 'q-p4', attemptIsAnnulled: undefined, snapshot: undefined, expected: null },
+        { id: '5a', simId: 'sim-p5a', qId: 'q-shared', attemptIsAnnulled: undefined, snapshot: false, expected: false },
+        { id: '5b', simId: 'sim-p5b', qId: 'q-shared', attemptIsAnnulled: undefined, snapshot: true, expected: true },
+      ];
+
+      // A. Mock Repository
+      const parityMockRepo = new MockEducationalAnalyticsRepository();
+      for (const sc of scenarios) {
+        parityMockRepo.simulations.push({
+          id: sc.simId,
+          userId: USER_A,
+          status: 'COMPLETED',
+          scorePercentage: 100,
+          correctCount: 1,
+          wrongCount: 0,
+          durationSeconds: 60,
+          finishedAt: new Date(),
+        });
+        if (sc.snapshot !== undefined) {
+          parityMockRepo.simulationQuestions.push({
+            simulationId: sc.simId,
+            questionId: sc.qId,
+            isAnnulledSnapshot: sc.snapshot,
+          });
+        }
+        parityMockRepo.questionAttempts.push({
+          id: `att-${sc.id}`,
+          userId: USER_A,
+          simulationId: sc.simId,
+          questionId: sc.qId,
+          isCorrect: true,
+          isAnnulled: sc.attemptIsAnnulled,
+          timeSpentSeconds: 30,
+          answeredAt: new Date(),
+          question: { subject: 'Direito', difficulty: 'EASY', topic: 'T' },
+        });
+      }
+      const mockResults = await parityMockRepo.getQuestionAttemptsWithMetadata(USER_A);
+
+      // B. Prisma Repository com PrismaClient mockado
+      const rawPrismaAttempts = scenarios.map((sc) => ({
+        id: `att-${sc.id}`,
+        simulationId: sc.simId,
+        questionId: sc.qId,
+        isCorrect: true,
+        timeSpentSeconds: 30,
+        answeredAt: new Date(),
+        question: { subject: 'Direito', difficulty: 'EASY', topic: 'T' },
+      }));
+
+      const simulationQuestionsInDb = scenarios
+        .filter((sc) => sc.snapshot !== undefined)
+        .map((sc) => ({
+          simulationId: sc.simId,
+          questionId: sc.qId,
+          isAnnulledSnapshot: sc.snapshot!,
+        }));
+
+      const fakePrisma = {
+        questionAttempt: {
+          findMany: vi.fn().mockResolvedValueOnce(rawPrismaAttempts).mockResolvedValueOnce([]),
+        },
+        simulationQuestion: {
+          findMany: vi.fn().mockResolvedValue(simulationQuestionsInDb),
+        },
+      } as any;
+
+      const parityPrismaRepo = new PrismaEducationalAnalyticsRepository(fakePrisma);
+      const prismaResults: QuestionAttemptWithMetadata[] = [];
+      await parityPrismaRepo.processQuestionAttemptsInBatches(USER_A, (batch) => {
+        prismaResults.push(...batch);
+      });
+
+      // Validação de paridade elemento a elemento
+      expect(mockResults).toHaveLength(scenarios.length);
+      expect(prismaResults).toHaveLength(scenarios.length);
+
+      for (let i = 0; i < scenarios.length; i++) {
+        const sc = scenarios[i];
+        const mockItem = mockResults.find((m) => m.id === `att-${sc.id}`);
+        const prismaItem = prismaResults.find((p) => p.id === `att-${sc.id}`);
+
+        expect(mockItem).toBeDefined();
+        expect(prismaItem).toBeDefined();
+
+        // Ambos devem produzir exatamente o valor esperado
+        expect(mockItem?.isAnnulled).toBe(sc.expected);
+        expect(prismaItem?.isAnnulled).toBe(sc.expected);
+
+        // Paridade estrita Mock === Prisma
+        expect(mockItem?.isAnnulled).toBe(prismaItem?.isAnnulled);
+      }
     });
   });
 });

@@ -22,7 +22,7 @@ export interface IObjectStorageService {
   putPrivateObject(input: PutPrivateObjectInput): Promise<StoredPrivateObjectInfo>;
   getPrivateObjectBuffer(objectKey: string, bucket?: string): Promise<Buffer>;
   deletePrivateObject(objectKey: string, bucket?: string): Promise<void>;
-  checkStorageHealth(): Promise<{
+  checkStorageHealth(options?: { timeoutMs?: number }): Promise<{
     status: 'up' | 'down' | 'unconfigured';
     bucket: string;
     message: string;
@@ -36,6 +36,7 @@ export interface MinioStorageConfig {
   accessKey?: string;
   secretKey?: string;
   bucket?: string;
+  customClient?: MinioClient;
 }
 
 /**
@@ -91,6 +92,9 @@ export class MinioObjectStorageService implements IObjectStorageService {
     this.accessKey = config.accessKey ?? process.env.MINIO_ACCESS_KEY;
     this.secretKey = config.secretKey ?? process.env.MINIO_SECRET_KEY;
     this.bucket = config.bucket ?? process.env.MINIO_BUCKET ?? 'questforge-documents';
+    if (config.customClient) {
+      this.clientInstance = config.customClient;
+    }
   }
 
   getDefaultBucket(): string {
@@ -98,6 +102,7 @@ export class MinioObjectStorageService implements IObjectStorageService {
   }
 
   private isConfigured(): boolean {
+    if (this.clientInstance) return true;
     if (!this.accessKey || !this.secretKey) return false;
     if (
       this.accessKey.includes('SEU_USUARIO') ||
@@ -221,7 +226,16 @@ export class MinioObjectStorageService implements IObjectStorageService {
     }
   }
 
-  async checkStorageHealth(): Promise<{
+  /**
+   * Verifica a conectividade com o MinIO checando a existência do bucket privado.
+   *
+   * Nota de concorrência e observabilidade (ACH-HEALTH-03):
+   * O cliente MinIO (v8) não disponibiliza cancelamento nativo via AbortSignal em `bucketExists`.
+   * O `Promise.race` impõe um limite de tempo máximo (deadline) de execução na camada Node.js,
+   * prevenindo que o endpoint de readiness fique travado, mas a requisição de rede subjacente
+   * prossegue até que o socket seja encerrado ou atinja o timeout de transporte TCP.
+   */
+  async checkStorageHealth(options: { timeoutMs?: number } = {}): Promise<{
     status: 'up' | 'down' | 'unconfigured';
     bucket: string;
     message: string;
@@ -234,20 +248,45 @@ export class MinioObjectStorageService implements IObjectStorageService {
       };
     }
 
+    const effectiveTimeout =
+      Number.isFinite(options.timeoutMs) && (options.timeoutMs ?? 0) > 0
+        ? options.timeoutMs!
+        : 2500;
+
+    let timer: NodeJS.Timeout | undefined;
+
     try {
       const client = this.getClientOrThrow();
-      await client.bucketExists(this.bucket);
+
+      const checkPromise = client.bucketExists(this.bucket);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error('MINIO_HEALTH_CHECK_TIMEOUT'));
+        }, effectiveTimeout);
+      });
+
+      await Promise.race([checkPromise, timeoutPromise]);
+
       return {
         status: 'up',
         bucket: this.bucket,
         message: 'Conectividade com MinIO verificada com sucesso.',
       };
-    } catch {
+    } catch (error) {
+      const isTimeout =
+        error instanceof Error && error.message === 'MINIO_HEALTH_CHECK_TIMEOUT';
+
       return {
         status: 'down',
         bucket: this.bucket,
-        message: 'Não foi possível estabelecer conexão com o servidor MinIO.',
+        message: isTimeout
+          ? `Tempo limite de ${effectiveTimeout}ms excedido na verificação do MinIO.`
+          : 'Não foi possível estabelecer conexão com o servidor MinIO.',
       };
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
     }
   }
 }

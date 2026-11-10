@@ -160,7 +160,12 @@ export interface CompletedSimulationMetric {
 }
 
 /**
- * Modelo intermediário de tentativa de questão com metadados da questão associada e status de anulação (Sprint 9.5.1).
+ * Modelo intermediário de tentativa de questão com metadados da questão associada e status de anulação (Sprint 9.5.1 / 10.1).
+ *
+ * O campo `isAnnulled` representa a classificação tri-estado de anulação (ACH-SEC-01):
+ * - `true`: questão comprovadamente anulada no exame/gabarito oficial.
+ * - `false`: questão comprovadamente regular (não anulada).
+ * - `null`: estado desconhecido / ausência de snapshot de SimulationQuestion correspondente.
  */
 export interface QuestionAttemptWithMetadata {
   id: string;
@@ -169,7 +174,7 @@ export interface QuestionAttemptWithMetadata {
   isCorrect: boolean | null;
   timeSpentSeconds: number | null;
   answeredAt: Date | null;
-  isAnnulled?: boolean;
+  isAnnulled: boolean | null;
   question: {
     subject: string | null;
     difficulty: string | null;

@@ -34,7 +34,9 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # Rota oficial de readiness HTTP do MinIO (/minio/health/live) sem expor credenciais.
+      # Utiliza detecção de ferramenta disponível (curl ou mc) sem depender de alias estático 'local'.
+      test: ["CMD-SHELL", "(command -v curl >/dev/null 2>&1 && curl -f http://localhost:9000/minio/health/live) || (command -v mc >/dev/null 2>&1 && mc ready local) || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

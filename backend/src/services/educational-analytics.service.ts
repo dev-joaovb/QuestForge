@@ -127,10 +127,13 @@ export class EducationalAnalyticsService {
             continue;
           }
 
-          // Sprint 9.5.1: Neutralização de questões anuladas em exames oficiais
-          // Bonificações oficiais concedidas a questões anuladas não constituem demonstração de mérito pedagógico
-          // e são neutralizadas das métricas de acurácia, disciplinas e dificuldades.
-          if (attempt.isAnnulled === true) {
+          // Sprint 9.5.1 & Sprint 10.1 (ACH-SEC-01):
+          // Apenas questões comprovadamente regulares (isAnnulled === false) são contabilizadas
+          // nas métricas de domínio pedagógico demonstrado (acurácia, disciplinas e dificuldades).
+          // - Se isAnnulled === true: questão anulada oficialmente (bonificação não reflete mérito pedagógico demonstrado).
+          // - Se isAnnulled === null ou undefined: estado desconhecido / ausência de snapshot de anulação confiável.
+          // Em ambos os casos, a tentativa é neutralizada conservadoramente e não pontua nem conta no total pedagógico.
+          if (attempt.isAnnulled !== false) {
             continue;
           }
 
