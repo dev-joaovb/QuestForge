@@ -1,145 +1,183 @@
 # QuestForge
 
-Plataforma full-stack de engenharia de estudos e preparação para concursos públicos, vestibulares, certificações e exames, integrando processamento de documentos PDF, OCR, estruturação assistida por IA local (Ollama), validação estrita de dados, simulados cronometrados e análise de desempenho persistida em PostgreSQL.
+> Plataforma fullstack moderna para engenharia de estudos, simulados cronometrados de concursos e exames, processamento de provas em PDF e diagnósticos pedagógicos orientados por dados.
+
+![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite-8.x-646CFF?logo=vite&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.x-06B6D4?logo=tailwindcss&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-6.x-2D3748?logo=prisma&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![Vitest](https://img.shields.io/badge/Tests-864%20passed-22c55e?logo=vitest&logoColor=white)
 
 ---
 
-## 1. Arquitetura do Sistema
+## Sobre o Projeto
+
+Preparar-se para concursos públicos e vestibulares de alta concorrência exige disciplina, resolução intensiva de questões e análise fria de desempenho. No entanto, candidatos frequentemente enfrentam desafios como:
+
+- Provas e editais dispersos em arquivos PDF desestruturados.
+- Dificuldade para simular condições reais de prova com cronômetro e gabarito protegido.
+- Distorções nas estatísticas de estudo causadas por questões anuladas pelas bancas examinadoras.
+- Falta de métricas pedagógicas acionáveis que indiquem claramente pontos fortes e fracos.
+
+O **QuestForge** foi projetado para resolver esses problemas por meio de uma arquitetura limpa, estrita e centrada em dados, garantindo persistência relacional confiável no PostgreSQL, armazenamento privado de documentos no MinIO e geração de diagnósticos com inteligência artificial local.
+
+---
+
+## Principais Funcionalidades
+
+### 🔐 Gestão de Contas e Segurança HTTP
+- Autenticação com senhas criptografadas via `bcrypt`.
+- Sessões protegidas por cookies `HttpOnly`, `SameSite=Lax` e escopo restrito (`qf_session`).
+- Proteção nativa contra Cross-Site Request Forgery (CSRF) com verificação do cabeçalho customizado `X-Requested-With: QuestForge-Client` e validação estrita de origem.
+- Isolamento multi-inquilino de dados (prevenção rigorosa contra vulnerabilidades de IDOR).
+
+### 📄 Upload e Processamento de Documentos PDF
+- Upload seguro com validação de assinatura binária (*magic bytes* `%PDF-1.4`) e limite configurável de tamanho.
+- Armazenamento em repositório privado S3-compatible (MinIO), isolando arquivos por usuário (`users/{userId}/pdf/{docId}.pdf`).
+- Extração de texto digital integrada diretamente no fluxo via biblioteca `pdfjs-dist`.
+- Classificação inteligente: documentos escaneados (sem camada de texto) são catalogados com o status `NEEDS_OCR`.
+
+### 📝 Banco de Questões e Gabaritos Oficiais
+- Cadastro completo de enunciados, disciplinas, tópicos, níveis de dificuldade e alternativas (A a E).
+- Política de proteção de gabarito: correções e explicações ficam restritas durante a prova e só são liberadas após o término.
+- Gerenciamento e versionamento de gabaritos oficiais preliminares e definitivos publicados por bancas examinadoras, com suporte a anulações e alterações de alternativas.
+
+### ⏱️ Motor de Simulados Cronometrados
+- Geração de simulados customizados por disciplina, quantidade de questões e tempo limite.
+- Ciclo de vida formal de prova: `CREATED` $\to$ `IN_PROGRESS` $\to$ `COMPLETED`.
+- Mecanismo anti-fraude: gabaritos oficiais e status de acerto permanecem inacessíveis na aba de rede do navegador durante a resolução.
+- Bloqueio de submissão e alteração de respostas após a conclusão oficial do simulado (HTTP 409 Conflict).
+
+### 📊 Separação Rigorosa: Pontuação Oficial vs. Diagnóstico Pedagógico
+- **Pontuação Oficial do Concurso:** Aplica as regras de edital das bancas, atribuindo ponto para questões anuladas (`officialTotalPoints`).
+- **Diagnóstico Pedagógico Demonstrado:** Exclui estritamente questões anuladas (`isAnnulled === true` ou `null`) do cálculo de taxa de acerto e proficiência por tópico, evitando diagnósticos inflados artificialmente.
+
+### 🔥 Hábitos de Estudo e Sistema de Streak
+- Monitoramento contínuo de atividades de estudo com cálculo diário em UTC.
+- Idempotência: múltiplas atividades no mesmo dia civil mantêm a sequência sem contagens duplicadas.
+- Registro automático do recorde histórico (`longestStreak`) e recuperação de sequências perdidas.
+
+### 🤖 IA Educacional com Fallback Determinístico
+- Emissão de pareceres pedagógicos consultivos via modelos locais (Ollama, como `llama3.2:1b` ou `llama3.1:8b`).
+- **Defesa em Profundidade:** Sanitização léxica na entrada, validação esquemática estrita com schemas Zod (`.parse()`) e checagem cruzada quantitativa e semântica na saída.
+- **Continuidade Operacional:** Caso o servidor de IA esteja indisponível, offline ou com sobrecarga, o sistema aciona automaticamente o fallback determinístico offline (`source: 'DETERMINISTIC_FALLBACK'`), retornando HTTP 200 sem interromper o estudo do aluno.
+
+---
+
+## Tecnologias Utilizadas
+
+| Camada | Tecnologias |
+|---|---|
+| **Frontend** | React 19, TypeScript, Vite, Tailwind CSS v4, Lucide Icons, React Router DOM v7 |
+| **Backend** | Node.js 20+, Express, TypeScript (`tsx`), Zod (validação de schemas), Helmet, Cookie-Parser |
+| **Persistência Relacional** | PostgreSQL 16, Prisma ORM v6 (13 modelos relacionais, 11 enums tipados, 5 migrações) |
+| **Object Storage** | MinIO (protocolo S3 compatível com AWS SDK v3) |
+| **Inteligência Artificial** | Ollama API HTTP local (`POST /api/chat`) |
+| **Testes e Qualidade** | Vitest, Supertest, Testing Library, TypeScript Compiler (`tsc --noEmit`) |
+| **Infraestrutura** | Docker Compose v2, Dockerfiles multi-stage para Backend e Frontend |
+
+---
+
+## Arquitetura do Sistema
+
+O QuestForge adota uma arquitetura em camadas com baixo acoplamento e separação explícita entre lógica de negócios, transporte HTTP e armazenamento:
 
 ```text
-React + TypeScript + Vite (Frontend)
-          │
-          │ HTTP / Cookies HttpOnly
-          ▼
-Node.js + Express + TypeScript (Backend)
-          │
-          ├── Controllers / Services / Repositories
-          ├── Validação (Zod)
-          ├── Processamento PDF / OCR (MinIO)
-          ├── IA Local (AIProvider / OllamaProvider)
-          ▼
-       Prisma ORM
-          │
-          ▼
-     PostgreSQL
+┌────────────────────────────────────────────────────────┐
+│                   Frontend (React SPA)                 │
+└───────────────────────────┬────────────────────────────┘
+                            │ HTTP / Cookies HttpOnly
+┌───────────────────────────▼────────────────────────────┐
+│                    API REST (Express)                  │
+│                                                        │
+│  [Middlewares] CSRF • Auth • Rate-Limit • ErrorHandler │
+│  [Rotas]       Auth • Docs • Questions • Simulations   │
+│  [Serviços]    Domain Logic • Analytics • IA Client    │
+└───────────┬─────────────────┬───────────────────┬──────┘
+            │                 │                   │
+            ▼                 ▼                   ▼
+    ┌───────────────┐ ┌───────────────┐   ┌───────────────┐
+    │  Prisma ORM   │ │  MinIO Client │   │ Ollama Client │
+    └───────┬───────┘ └───────┬───────┘   └───────┬───────┘
+            ▼                 ▼                   ▼
+     PostgreSQL 16          MinIO              Ollama
+    (Dados & Estado)     (PDF Storage)      (IA Local)
 ```
 
-### Princípios Arquiteturais
-- **PostgreSQL como Fonte Oficial:** Nenhuma regra de negócio ou dado de usuário (contas, provas, questões, simulados, respostas, streak, histórico) é persistido em `localStorage`, `sessionStorage` ou mocks em memória.
-- **Segurança de Credenciais:** Nenhum segredo ou senha é versionado no repositório. Todas as credenciais devem ser preenchidas localmente em `.env` a partir do modelo documentado em `.env.example`.
-- **Observabilidade e Health Check Real:** O endpoint `GET /api/health` verifica a conectividade real com o PostgreSQL (`SELECT 1` via Prisma) e separa claramente o estado da aplicação HTTP (`app`) do estado das dependências (`dependencies.database` e `dependencies.environment`).
-
 ---
 
-## 2. Pré-requisitos
+## Como Executar
 
-- **Node.js** >= 22.x e **npm**
-- **Docker** e **Docker Compose** (para execução containerizada de PostgreSQL, MinIO, Ollama, Backend e Frontend) ou instância PostgreSQL 16+ acessível localmente.
+### Pré-requisitos
+- **Node.js** >= 20.x e **npm**
+- **Docker** e **Docker Compose** v2 (recomendado para a stack completa)
 
----
-
-## 3. Configuração do Ambiente (`.env`)
-
-1. Copie o arquivo `.env.example` para `.env` na raiz do projeto:
-
+### 1. Clonar e Configurar o Ambiente
 ```bash
+# Copiar o modelo de variáveis de ambiente
 cp .env.example .env
 ```
+Preencha no arquivo `.env` as senhas do PostgreSQL, chaves do MinIO e segredo de sessão (`SESSION_SECRET`).
 
-2. Preencha manualmente os valores obrigatórios no seu `.env`:
-   - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`: Credenciais do banco PostgreSQL.
-   - `DATABASE_URL`: URL de conexão com o PostgreSQL (ex.: `postgresql://SEU_USUARIO:SUA_SENHA@localhost:5432/questforge?schema=public`).
-   - `SESSION_SECRET`: Chave aleatória com **no mínimo 32 caracteres** para assinatura de sessões seguras.
-   - `MINIO_ACCESS_KEY` e `MINIO_SECRET_KEY`: Credenciais para o armazenamento de objetos MinIO.
-   - `OLLAMA_BASE_URL` e `OLLAMA_MODEL`: Endereço do serviço Ollama e nome do modelo local (opcional durante a validação da fundação da Sprint 0).
-
----
-
-## 4. Inicialização com Docker Compose
-
-O arquivo `docker-compose.yml` orquestra os cinco serviços da arquitetura na rede interna `questforge-net`:
-
-| Serviço | Nome DNS na Rede Docker | Porta Padrão (Host) | Descrição |
-| :--- | :--- | :--- | :--- |
-| `postgresql` | `postgresql` | `5432` | Banco de dados relacional PostgreSQL 16 com healthcheck `pg_isready` |
-| `minio` | `minio` | `9000` / `9001` | Object Storage para PDFs de provas e gabaritos |
-| `ollama` | `ollama` | `11434` | Runtime para execução de LLMs locais |
-| `backend` | `backend` | `3333` | API Node.js + Express + Prisma conectada a `postgresql`, `minio` e `ollama` |
-| `frontend` | `frontend` | `5173` | Interface React + Vite com proxy `/api` apontando para `http://backend:3333` |
-
-### Subindo apenas a infraestrutura de apoio (desenvolvimento híbrido no host)
+### 2. Execução em Desenvolvimento (Local)
 ```bash
-docker compose up -d postgresql minio ollama
-```
+# Instalar dependências e gerar o cliente Prisma
+npm install
 
-### Subindo toda a stack em containers
-```bash
-docker compose up --build -d
-```
-
-> **Nota sobre o Ollama:** O container `ollama` sobe sem realizar o download automático de modelos pesados (que possuem vários gigabytes), permitindo validar toda a fundação básica rapidamente. Quando desejar testar extração ou análise via IA local nas Sprints correspondentes, execute manualmente:
-> ```bash
-> docker exec -it questforge-ollama ollama pull <nome-do-modelo>
-> ```
-
----
-
-## 5. Banco de Dados e Migrations (Prisma)
-
-Com o PostgreSQL ativo e a variável `DATABASE_URL` configurada no `.env`:
-
-```bash
-# 1. Validar o schema do Prisma
-npm run prisma:validate
-
-# 2. Gerar o Prisma Client tipado
-npm run prisma:generate
-
-# 3. Executar e versionar migrations no PostgreSQL
-npm run prisma:migrate
-```
-
----
-
-## 6. Execução em Desenvolvimento
-
-Para iniciar o servidor unificado (Express + Vite Middleware na porta `3000`):
-
-```bash
+# Iniciar o servidor de desenvolvimento unificado (porta 3000)
 npm run dev
 ```
+- Aplicação Web: `http://localhost:3000`
+- Diagnóstico de Liveness: `http://localhost:3000/api/live`
+- Diagnóstico de Readiness: `http://localhost:3000/api/ready`
 
-- **Aplicação Web:** `http://localhost:3000`
-- **Health Check da API:** `http://localhost:3000/api/health`
+### 3. Execução via Docker Compose
+```bash
+# Subir toda a infraestrutura em containers
+docker compose up -d
+
+# Aplicar as migrações do banco de dados relacional
+npx prisma migrate deploy
+```
+
+> 📖 **Instruções Detalhadas de Implantação:** Consulte o guia mestre [`docs/SPRINT_11_HANDOFF.md`](docs/SPRINT_11_HANDOFF.md) e o manual operacional [`docs/DEPLOYMENT_SPRINT_11.md`](docs/DEPLOYMENT_SPRINT_11.md).
 
 ---
 
-## 7. Testes Automatizados e Verificação de Qualidade
+## Testes Automatizados e Qualidade
 
-O projeto separa estritamente **testes unitários** de **testes de integração real**:
+O QuestForge mantém uma rigorosa suíte de testes automatizados com cobertura hermética em todas as camadas da aplicação:
 
-### 7.1 Verificação de Tipos TypeScript e Build
 ```bash
+# Executar a suíte de testes completa (864 testes)
+npm test
+
+# Validação de tipagem e integridade estática
 npm run lint
+
+# Compilação e build de produção
 npm run build
 ```
 
-### 7.2 Testes Unitários (não exigem serviços externos ativos)
-Validam regras de validação de ambiente, higienização de logs, contrato HTTP do `GET /api/health` (estados `up`, `down`, `unconfigured` com injeção controlada) e integridade da configuração Docker:
-```bash
-npm run test:unit
-```
+- **864 testes aprovados** (testes unitários, validações Zod, simulações de fluxo multimodulares e controladores HTTP).
+- **4 testes de integração real** preservados com marcação `.skip()` para validação em ambiente com infraestrutura real ativa.
+- **0 erros de TypeScript** em compilação estrita.
 
-### 7.3 Testes de Integração com PostgreSQL Real (`database.integration.test.ts`)
-Exercitam o `PrismaClient` e o endpoint `GET /api/health` **sem mocks**:
-```bash
-# Executa a suíte de integração (testes que exigem banco ativo ficam marcados como skipped se RUN_DB_INTEGRATION != true)
-npm run test:integration
-```
+---
 
-Para executar e validar o teste de conectividade real contra uma instância PostgreSQL ativa:
-```bash
-RUN_DB_INTEGRATION=true npm run test:integration
-```
+## Status do Projeto e Próximos Passos
 
-> **Critério de Validação:** A conectividade real com o PostgreSQL só é considerada validada quando `RUN_DB_INTEGRATION=true npm run test:integration` executa o teste `[REQUER POSTGRESQL ATIVO]` sem `skip` e retorna `status: "up"` (`HTTP 200`).
+- [x] **Arquitetura Base e Persistência:** Concluída com 13 modelos e 5 migrações no Prisma ORM.
+- [x] **Motor de Simulados e Anti-Cheating:** Concluído e homologado contra manipulação de respostas.
+- [x] **Motor de Streak e Atividades:** Concluído com cálculo determinístico diário em UTC.
+- [x] **Analytics Educacional e IA Local:** Concluído com suporte a fallback determinístico offline.
+- [x] **Testes Herméticos:** 100% aprovados sem dependência de serviços externos.
+- [ ] **Implantação e Homologação Real (Sprint 11):** Fase de inicialização dos containers reais no ambiente hospedeiro Debian, reativação dos 4 testes de integração e validação ponta a ponta com tráfego real.
+- [ ] **Motor Concreto de OCR Ótico:** Atualmente, a aplicação realiza a extração digital nativa via `pdfjs-dist` e identifica documentos escaneados (`NEEDS_OCR`). Documentos escaneados respondem honestamente com `503 OCR_UNAVAILABLE`; a integração de um motor como Tesseract/EasyOCR está planejada como evolução futura.
+
+---
+
+*QuestForge — Desenvolvido com foco em robustez técnica, privacidade de dados e eficácia nos estudos.*
