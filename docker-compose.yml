@@ -1,27 +1,6 @@
 services:
-  postgresql:
-    image: postgres:16-alpine
-    container_name: questforge-postgresql
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:?Defina POSTGRES_USER no arquivo .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}
-      POSTGRES_DB: ${POSTGRES_DB:-questforge}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB:-questforge}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    networks:
-      - questforge-net
-
   minio:
-    image: minio/minio:latest
+    image: pgsty/silo:latest
     container_name: questforge-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -70,8 +49,6 @@ services:
     container_name: questforge-backend
     restart: unless-stopped
     depends_on:
-      postgresql:
-        condition: service_healthy
       minio:
         condition: service_healthy
       ollama:
@@ -80,8 +57,8 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: ${BACKEND_PORT:-3333}
       FRONTEND_URL: http://localhost:${FRONTEND_PORT:-5173}
-      # Comunicação interna via DNS da rede Docker usando o serviço `postgresql`
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${POSTGRES_DB:-questforge}?schema=public
+      # PostgreSQL compartilhado, com banco exclusivo do QuestForge
+      DATABASE_URL: ${DATABASE_URL_DOCKER:?Defina DATABASE_URL_DOCKER no arquivo .env}
       SESSION_SECRET: ${SESSION_SECRET:?Defina SESSION_SECRET no arquivo .env}
       # Comunicação interna via DNS da rede Docker usando os serviços `ollama` e `minio`
       OLLAMA_BASE_URL: http://ollama:11434
@@ -102,6 +79,7 @@ services:
       start_period: 15s
     networks:
       - questforge-net
+      - postgres-shared-net
 
   frontend:
     build:
@@ -120,10 +98,12 @@ services:
       - questforge-net
 
 volumes:
-  postgres_data:
   minio_data:
   ollama_data:
 
 networks:
   questforge-net:
     driver: bridge
+  postgres-shared-net:
+    external: true
+    name: ${POSTGRES_DOCKER_NETWORK:-questforge-postgres-net}
