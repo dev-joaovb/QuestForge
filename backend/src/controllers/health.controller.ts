@@ -217,7 +217,10 @@ export function createReadyController(deps: HealthCheckDependencies = {}) {
             message: 'Nenhum modelo Ollama configurado no ambiente.',
           };
         }
-        const adapter = new OllamaChatAdapter({ defaultModel: modelName });
+        const adapter = new OllamaChatAdapter({
+          baseUrl: process.env.OLLAMA_BASE_URL,
+          defaultModel: modelName,
+        });
         const health = await adapter.checkAvailability({ timeoutMs: 2500 });
         if (!health.reachable) {
           return {

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.ts';
 import { checkDatabaseHealth } from '../src/config/database.ts';
@@ -355,6 +355,67 @@ describe('Health & Readiness Check Endpoints — Testes Unitários Herméticos (
       expect(response.body.ready).toBe(true);
       expect(response.body.status).toBe('ready_degraded');
       expect(response.body.optional.ai.status).toBe('model_missing');
+    });
+
+    it('deve utilizar OLLAMA_BASE_URL no diagnóstico padrão de readiness', async () => {
+      const previousBaseUrl = process.env.OLLAMA_BASE_URL;
+      const previousModel = process.env.OLLAMA_MODEL;
+
+      process.env.OLLAMA_BASE_URL = 'http://ollama-test:11434';
+      process.env.OLLAMA_MODEL = 'qwen2.5:3b';
+
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({ models: [{ name: 'qwen2.5:3b' }] }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        )
+      );
+
+      try {
+        const app = createApp({
+          health: {
+            rawEnv: validTestEnv,
+            checkDb: async () => ({
+              status: 'up',
+              latencyMs: 1,
+              message: 'PostgreSQL OK.',
+            }),
+            checkStorage: async () => ({
+              provider: 'minio',
+              status: 'up',
+              bucket: 'questforge-documents',
+              message: 'Armazenamento OK.',
+            }),
+          },
+        });
+
+        const response = await request(app).get('/api/ready');
+
+        expect(response.status).toBe(200);
+        expect(response.body.optional.ai.status).toBe('up');
+        expect(response.body.optional.ai.model).toBe('qwen2.5:3b');
+        expect(fetchMock).toHaveBeenCalledWith(
+          'http://ollama-test:11434/api/tags',
+          expect.objectContaining({ method: 'GET' })
+        );
+      } finally {
+        fetchMock.mockRestore();
+
+        if (previousBaseUrl === undefined) {
+          delete process.env.OLLAMA_BASE_URL;
+        } else {
+          process.env.OLLAMA_BASE_URL = previousBaseUrl;
+        }
+
+        if (previousModel === undefined) {
+          delete process.env.OLLAMA_MODEL;
+        } else {
+          process.env.OLLAMA_MODEL = previousModel;
+        }
+      }
     });
 
     it('9. deve informar corretamente o status do OCR como unconfigured sem degradar a prontidão', async () => {
