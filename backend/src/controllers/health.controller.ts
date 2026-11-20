@@ -3,7 +3,7 @@ import { checkDatabaseHealth, type DatabaseHealthStatus } from '../config/databa
 import { validateEnv } from '../config/env.ts';
 import { MinioObjectStorageService } from '../services/storage.service.ts';
 import { OllamaChatAdapter } from '../services/ollama-adapter.service.ts';
-import { UnconfiguredOcrService } from '../services/ocr.service.ts';
+import { createDefaultOcrService } from '../services/tesseract-ocr.factory.ts';
 
 export interface StorageHealthStatus {
   provider?: string;
@@ -261,7 +261,7 @@ export function createReadyController(deps: HealthCheckDependencies = {}) {
   const runOcrCheck = async (): Promise<OcrHealthStatus> => {
     try {
       const defaultChecker = async (): Promise<OcrHealthStatus> => {
-        const ocrService = new UnconfiguredOcrService();
+        const ocrService = createDefaultOcrService();
         const status = ocrService.getStatus();
         return {
           status: status.available ? 'available' : 'unconfigured',
