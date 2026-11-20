@@ -22,10 +22,8 @@ import {
   PdfJsTextExtractor,
   type IPdfTextExtractor,
 } from '../utils/pdf-extractor.ts';
-import {
-  UnconfiguredOcrService,
-  type IOcrService,
-} from './ocr.service.ts';
+import type { IOcrService } from './ocr.service.ts';
+import { createDefaultOcrService } from './tesseract-ocr.factory.ts';
 import {
   OCR_ACQUIRABLE_STATUSES,
   PrismaPdfDocumentRepository,
@@ -84,7 +82,7 @@ export class PdfDocumentService {
     this.repository = deps.pdfDocumentRepository ?? new PrismaPdfDocumentRepository();
     this.storage = deps.storageService ?? new MinioObjectStorageService();
     this.extractor = deps.pdfTextExtractor ?? new PdfJsTextExtractor();
-    this.ocrService = deps.ocrService ?? new UnconfiguredOcrService();
+    this.ocrService = deps.ocrService ?? createDefaultOcrService();
     this.autoProcessOcrOnUpload = deps.autoProcessOcrOnUpload ?? false;
     this.maxFileSizeBytes = deps.maxFileSizeBytes;
     this.maxPages = deps.maxPages;

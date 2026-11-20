@@ -4,6 +4,10 @@ import {
   type PdfDigitalExtractionOptions,
   type PdfDigitalExtractionResult,
 } from '../types/pdf-document.types.ts';
+import {
+  PopplerPageRenderer,
+  type IPdfPageRenderer,
+} from './poppler-page-renderer.ts';
 
 export const DEFAULT_MAX_PDF_PAGES = 150;
 export const DEFAULT_PDF_EXTRACTION_TIMEOUT_MS = 15000;
@@ -126,9 +130,14 @@ async function defaultPdfJsLoader(uint8Data: Uint8Array): Promise<PdfLoadingTask
  */
 export class PdfJsTextExtractor implements IPdfTextExtractor {
   private readonly loadDocumentTask: PdfDocumentLoaderFn;
+  private readonly pageRenderer: IPdfPageRenderer;
 
-  constructor(customLoader?: PdfDocumentLoaderFn) {
+  constructor(
+    customLoader?: PdfDocumentLoaderFn,
+    pageRenderer: IPdfPageRenderer = new PopplerPageRenderer()
+  ) {
     this.loadDocumentTask = customLoader ?? defaultPdfJsLoader;
+    this.pageRenderer = pageRenderer;
   }
 
   async extractDigitalText(
@@ -455,6 +464,8 @@ export class PdfJsTextExtractor implements IPdfTextExtractor {
       return destroyChain;
     };
 
+    const deadline = Date.now() + timeoutMs;
+
     timeoutHandle = setTimeout(() => {
       timedOut = true;
       abortController.abort();
@@ -526,30 +537,27 @@ export class PdfJsTextExtractor implements IPdfTextExtractor {
         const page = await raceWithSignal(pdfDoc.getPage(pageNumber), signal);
         activePage = page;
 
-        // Extrai metadados leves da página e aloca apenas um descritor temporário por página
         const viewport =
           typeof page.getViewport === 'function'
             ? page.getViewport({ scale: 1.0 })
             : { width: 612, height: 792 };
 
-        const singlePageDescriptorBuffer = Buffer.from(
-          JSON.stringify({
-            pageNumber,
-            totalPages: pageCount,
-            width: Math.round(viewport.width),
-            height: Math.round(viewport.height),
-          }),
-          'utf8'
-        );
-
+        let imageBuffer: Buffer | null = null;
         let pageCleaned = false;
+
         const cleanupCurrentPage = () => {
           if (pageCleaned) return;
           pageCleaned = true;
-          singlePageDescriptorBuffer.fill(0);
+
+          if (imageBuffer) {
+            imageBuffer.fill(0);
+            imageBuffer = null;
+          }
+
           if (activePage === page) {
             activePage = null;
           }
+
           try {
             page.cleanup();
           } catch {
@@ -558,11 +566,27 @@ export class PdfJsTextExtractor implements IPdfTextExtractor {
         };
 
         try {
+          const remainingMs = Math.max(1, deadline - Date.now());
+
+          if (timedOut || signal.aborted || Date.now() >= deadline) {
+            throw createAbortError();
+          }
+
+          imageBuffer = await this.pageRenderer.renderPage(buffer, {
+            pageNumber,
+            timeoutMs: remainingMs,
+            signal,
+          });
+
+          if (timedOut || signal.aborted) {
+            throw createAbortError();
+          }
+
           yield {
             pageNumber,
             totalPages: pageCount,
-            contentBuffer: singlePageDescriptorBuffer,
-            mimeType: 'application/pdf',
+            contentBuffer: imageBuffer,
+            mimeType: 'image/png',
             width: Math.round(viewport.width),
             height: Math.round(viewport.height),
             cleanup: cleanupCurrentPage,

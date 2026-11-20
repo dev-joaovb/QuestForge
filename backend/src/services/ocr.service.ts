@@ -41,6 +41,7 @@ export type OcrPageRecognizerFn = (
 export interface ConfigurableOcrServiceOptions {
   providerName?: string;
   recognizer?: OcrPageRecognizerFn;
+  awaitRecognizerTermination?: boolean;
   defaultLanguage?: string;
   maxPages?: number;
   timeoutMs?: number;
@@ -115,6 +116,7 @@ export class UnconfiguredOcrService implements IOcrService {
 export class ConfigurableOcrService implements IOcrService {
   private readonly providerName: string;
   private readonly recognizer?: OcrPageRecognizerFn;
+  private readonly awaitRecognizerTermination: boolean;
   private readonly defaultLanguage: string;
   private readonly defaultMaxPages: number;
   private readonly defaultTimeoutMs: number;
@@ -122,6 +124,7 @@ export class ConfigurableOcrService implements IOcrService {
   constructor(options: ConfigurableOcrServiceOptions = {}) {
     this.providerName = options.providerName ?? (options.recognizer ? 'custom-ocr' : 'unconfigured');
     this.recognizer = options.recognizer;
+    this.awaitRecognizerTermination = options.awaitRecognizerTermination ?? false;
     this.defaultLanguage = options.defaultLanguage ?? 'por';
     this.defaultMaxPages =
       options.maxPages ??
@@ -172,7 +175,9 @@ export class ConfigurableOcrService implements IOcrService {
     const timeoutMs = options?.timeoutMs ?? this.defaultTimeoutMs;
     const language = options?.language ?? this.defaultLanguage;
     const abortController = new AbortController();
-    const signal = options?.signal ?? abortController.signal;
+    const signal = options?.signal
+      ? AbortSignal.any([options.signal, abortController.signal])
+      : abortController.signal;
 
     let timedOut = false;
     const timeoutHandle = setTimeout(() => {
@@ -181,9 +186,11 @@ export class ConfigurableOcrService implements IOcrService {
     }, timeoutMs);
 
     try {
-      const result = await raceWithSignal(
-        this.recognizer(page, { signal, language }),
-        signal
+      const recognition = this.recognizer(page, { signal, language });
+      const result = await (
+        this.awaitRecognizerTermination
+          ? recognition
+          : raceWithSignal(recognition, signal)
       );
 
       return {
@@ -229,7 +236,9 @@ export class ConfigurableOcrService implements IOcrService {
     const language = options?.language ?? this.defaultLanguage;
 
     const abortController = new AbortController();
-    const signal = abortController.signal;
+    const signal = options?.signal
+      ? AbortSignal.any([options.signal, abortController.signal])
+      : abortController.signal;
 
     let timedOut = false;
     const timeoutHandle = setTimeout(() => {
@@ -262,9 +271,11 @@ export class ConfigurableOcrService implements IOcrService {
 
           totalPagesDeclared = Math.max(totalPagesDeclared, page.totalPages);
 
-          const pageResult = await raceWithSignal(
-            this.recognizer(page, { signal, language }),
-            signal
+          const recognition = this.recognizer(page, { signal, language });
+          const pageResult = await (
+            this.awaitRecognizerTermination
+              ? recognition
+              : raceWithSignal(recognition, signal)
           );
 
           const normalizedPageText = normalizeExtractedPdfText(pageResult.text || '');
