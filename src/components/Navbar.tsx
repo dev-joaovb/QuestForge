@@ -52,15 +52,16 @@ export function Navbar() {
           aria-label="Navegação principal"
           className="hidden md:flex items-center gap-6 text-sm font-medium text-neutral-400"
         >
-          {NAV_LINKS.map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              className="whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"
-            >
-              {item.label}
-            </a>
-          ))}
+          {status === 'unauthenticated' &&
+            NAV_LINKS.map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                className="whitespace-nowrap transition-colors duration-150 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2563EB]"
+              >
+                {item.label}
+              </a>
+            ))}
         </nav>
 
         {/* Zona 3: Ações primárias conforme estado real da sessão */}
@@ -117,7 +118,7 @@ export function Navbar() {
                 {isLoggingOut ? 'Saindo...' : 'Sair'}
               </button>
             </>
-          ) : (
+          ) : status === 'unauthenticated' ? (
             <>
               <Link
                 to="/login"
@@ -132,7 +133,7 @@ export function Navbar() {
                 Criar conta
               </Link>
             </>
-          )}
+          ) : null}
         </div>
 
         {/* Botão Menu Mobile */}
@@ -158,16 +159,17 @@ export function Navbar() {
           className="border-t border-neutral-800 bg-[#0A0A0A] px-4 pt-3 pb-5 md:hidden"
         >
           <div className="flex flex-col space-y-2">
-            {NAV_LINKS.map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className="rounded-md px-3 py-2 text-sm font-medium text-neutral-300 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-[#2563EB]"
-              >
-                {item.label}
-              </a>
-            ))}
+            {status === 'unauthenticated' &&
+              NAV_LINKS.map((item) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-md px-3 py-2 text-sm font-medium text-neutral-300 hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-[#2563EB]"
+                >
+                  {item.label}
+                </a>
+              ))}
           </div>
           <div className="mt-4 flex flex-col gap-2 border-t border-neutral-800 pt-4">
             {status === 'authenticated' && user ? (
@@ -228,7 +230,7 @@ export function Navbar() {
                   {isLoggingOut ? 'Saindo...' : 'Sair'}
                 </button>
               </>
-            ) : (
+            ) : status === 'unauthenticated' ? (
               <>
                 <Link
                   to="/login"
@@ -245,7 +247,7 @@ export function Navbar() {
                   Criar conta
                 </Link>
               </>
-            )}
+            ) : null}
           </div>
         </nav>
       )}
