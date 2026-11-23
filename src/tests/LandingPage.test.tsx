@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AppRoutes } from '../App.tsx';
 
@@ -14,46 +14,13 @@ describe('Landing Page Oficial & Roteamento Inicial (src/tests/LandingPage.test.
     globalThis.fetch = originalFetch;
   });
 
-  it('deve renderizar as seções obrigatórias da Landing Page, consultar /api/health e distinguir recursos ativos dos planejados', async () => {
-    globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/api/auth/me')) {
-        return {
-          status: 401,
-          ok: false,
-          headers: new Headers({ 'content-type': 'application/json' }),
-          json: async () => ({ error: 'Unauthorized', message: 'Autenticação necessária.' }),
-        } as Response;
-      }
-
-      return {
-        status: 200,
-        ok: true,
-        headers: new Headers({ 'content-type': 'application/json' }),
-        json: async () => ({
-          status: 'healthy',
-          timestamp: new Date().toISOString(),
-          app: {
-            name: 'QuestForge API',
-            status: 'up',
-            environment: 'test',
-          },
-          dependencies: {
-            database: {
-              provider: 'postgresql',
-              status: 'up',
-              latencyMs: 5,
-              message: 'Conectividade com PostgreSQL verificada com sucesso.',
-            },
-            environment: {
-              status: 'configured',
-              missingOrInvalidCount: 0,
-              issues: [],
-            },
-          },
-        }),
-      } as Response;
-    });
+  it('deve renderizar as seções da Landing Page sem expor o diagnóstico técnico', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      status: 401,
+      ok: false,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ error: 'Unauthorized', message: 'Autenticação necessária.' }),
+    } as Response);
 
     render(
       <MemoryRouter initialEntries={['/']}>
@@ -96,85 +63,20 @@ describe('Landing Page Oficial & Roteamento Inicial (src/tests/LandingPage.test.
     ).toHaveLength(9);
     expect(screen.queryByText(/Planejado — Sprint/i)).not.toBeInTheDocument();
 
-    // 4. Verifica atualização com o status real vindo de /api/health
-    await waitFor(() => {
-      expect(screen.getByText(/HEALTHY \(HTTP 200\)/i)).toBeInTheDocument();
-    });
+    // 4. O diagnóstico técnico não deve aparecer na página pública.
     expect(
-      screen.getByText(/Conectividade com PostgreSQL verificada com sucesso/i)
-    ).toBeInTheDocument();
-  });
+      screen.queryByRole('region', { name: /Diagnóstico técnico da plataforma/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Diagnóstico em Tempo Real da Fundação/i)
+    ).not.toBeInTheDocument();
 
-  it('deve tratar falha ou indisponibilidade de /api/health sem exibir estado falso de sucesso', async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error('Falha de conexão com o servidor'));
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <AppRoutes />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument();
-    });
-
-    expect(screen.getByText(/API de Health Check indisponível/i)).toBeInTheDocument();
-    expect(screen.queryByText(/HEALTHY \(HTTP 200\)/i)).not.toBeInTheDocument();
-  });
-
-  it('deve exibir estado DEGRADED (HTTP 503) sem indicar falsamente que o sistema está saudável quando o PostgreSQL está desconfigurado ou indisponível', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      status: 503,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      json: async () => ({
-        status: 'degraded',
-        timestamp: new Date().toISOString(),
-        app: { name: 'QuestForge API', status: 'up', environment: 'development' },
-        dependencies: {
-          database: {
-            provider: 'postgresql',
-            status: 'unconfigured',
-            latencyMs: null,
-            message: 'Variável DATABASE_URL ausente.',
-          },
-          environment: { status: 'incomplete', missingOrInvalidCount: 2, issues: [] },
-        },
-      }),
-    } as Response);
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <AppRoutes />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText(/DEGRADED \(HTTP 503\)/i)).toBeInTheDocument();
-    });
-
-    expect(screen.getByText('UNCONFIGURED')).toBeInTheDocument();
-    expect(screen.queryByText(/HEALTHY \(HTTP 200\)/i)).not.toBeInTheDocument();
-  });
-
-  it('deve tratar respostas HTTP inválidas (ex.: HTML 502 ou JSON fora do contrato) como erro sem exibir estado saudável', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      status: 502,
-      headers: new Headers({ 'content-type': 'text/html' }),
-      text: async () => '<html>Bad Gateway</html>',
-    } as unknown as Response);
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <AppRoutes />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument();
-    });
-
-    expect(screen.getByText(/Content-Type não é JSON/i)).toBeInTheDocument();
-    expect(screen.queryByText(/HEALTHY \(HTTP 200\)/i)).not.toBeInTheDocument();
+    // 5. A Landing Page não deve consultar o endpoint de diagnóstico.
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.some(([input]) =>
+        String(input).includes('/api/health')
+      )
+    ).toBe(false);
   });
 
   it('deve navegar para /login e /register exibindo os formulários reais de autenticação da Sprint 1', async () => {

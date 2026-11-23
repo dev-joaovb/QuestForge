@@ -1,19 +1,13 @@
 import '../landing.css';
 import { LandingDashboardPreview } from '../components/landing/LandingDashboardPreview';
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
-  RefreshCw,
   CheckCircle2,
-  AlertTriangle,
-  XCircle,
   Clock,
 } from 'lucide-react';
 import { Navbar } from '../components/Navbar.tsx';
 import { Footer } from '../components/Footer.tsx';
-import { fetchFoundationHealth } from '../services/api.ts';
-import type { HealthFetchState } from '../types/index.ts';
 
 const PROBLEMS = [
   {
@@ -148,35 +142,6 @@ const PLATFORM_FEATURES = [
 ];
 
 export function LandingPage() {
-  const [healthState, setHealthState] = useState<HealthFetchState>({ state: 'loading' });
-
-  const loadHealth = async (signal?: AbortSignal) => {
-    setHealthState({ state: 'loading' });
-    try {
-      const result = await fetchFoundationHealth(signal);
-      setHealthState({
-        state: 'loaded',
-        data: result.data,
-        httpStatus: result.httpStatus,
-      });
-    } catch (error) {
-      if (signal?.aborted) return;
-      setHealthState({
-        state: 'error',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Não foi possível consultar GET /api/health no momento.',
-      });
-    }
-  };
-
-  useEffect(() => {
-    const controller = new AbortController();
-    loadHealth(controller.signal);
-    return () => controller.abort();
-  }, []);
-
   return (
     <div className="qf-landing min-h-screen flex flex-col">
       {/* 1. NAVBAR */}
@@ -239,113 +204,6 @@ export function LandingPage() {
               <div className="lg:col-span-5 qf-animate-in">
                 <LandingDashboardPreview />
               </div>
-            </div>
-          </div>
-        </section>
-
-        <section aria-label="Diagnóstico técnico da plataforma" className="border-b border-neutral-800 py-10">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-
-              <div
-                id="status-fundacao"
-                className="rounded-xl border border-neutral-800 bg-neutral-950 p-6"
-              >
-                <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
-                  <div>
-                    <h2 className="text-sm font-semibold text-white">
-                      Diagnóstico em Tempo Real da Fundação
-                    </h2>
-                    <p className="mt-0.5 text-xs text-neutral-400">
-                      Consulta direta ao endpoint <code>GET /api/health</code>
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => loadHealth()}
-                    aria-label="Atualizar status da API"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-neutral-800 px-2.5 py-1.5 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-900 hover:text-white focus-visible:outline-2 focus-visible:outline-[#2563EB]"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Verificar
-                  </button>
-                </div>
-
-                {healthState.state === 'loading' && (
-                  <div className="py-8 text-xs font-mono text-neutral-400" role="status">
-                    Consultando estado real do backend e das dependências...
-                  </div>
-                )}
-
-                {healthState.state === 'error' && (
-                  <div
-                    className="mt-4 rounded-md border border-red-900/60 bg-red-950/20 p-4 text-xs text-red-200"
-                    role="alert"
-                  >
-                    <div className="flex items-center gap-2 font-semibold text-red-300">
-                      <XCircle className="h-4 w-4 shrink-0" />
-                      <span>API de Health Check indisponível</span>
-                    </div>
-                    <p className="mt-1.5 text-neutral-300">{healthState.message}</p>
-                  </div>
-                )}
-
-                {healthState.state === 'loaded' && (
-                  <div className="mt-4 space-y-4 text-xs">
-                    <div className="flex items-center justify-between border-b border-neutral-900 pb-3">
-                      <span className="text-neutral-400">Estado Geral do Serviço</span>
-                      <span className="font-mono font-medium text-white tabular-nums">
-                        {healthState.data.status === 'healthy'
-                          ? 'HEALTHY (HTTP 200)'
-                          : `DEGRADED (HTTP ${healthState.httpStatus})`}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between border-b border-neutral-900 pb-3">
-                      <span className="text-neutral-400">Servidor Express ({healthState.data.app.name})</span>
-                      <span className="inline-flex items-center gap-1.5 font-mono text-emerald-400">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        {healthState.data.app.status.toUpperCase()} ({healthState.data.app.environment})
-                      </span>
-                    </div>
-
-                    <div className="border-b border-neutral-900 pb-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-neutral-400">Dependência: PostgreSQL (Prisma)</span>
-                        {healthState.data.dependencies.database.status === 'up' ? (
-                          <span className="inline-flex items-center gap-1.5 font-mono text-emerald-400 tabular-nums">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            UP ({healthState.data.dependencies.database.latencyMs ?? 0}ms)
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 font-mono text-amber-400">
-                            <AlertTriangle className="h-3.5 w-3.5" />
-                            {healthState.data.dependencies.database.status.toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1.5 text-neutral-400">
-                        {healthState.data.dependencies.database.message}
-                      </p>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-neutral-400">Variáveis de Ambiente (.env)</span>
-                        <span className="font-mono text-neutral-200 tabular-nums">
-                          {healthState.data.dependencies.environment.status === 'configured'
-                            ? 'CONFIGURED'
-                            : `INCOMPLETE (${healthState.data.dependencies.environment.missingOrInvalidCount} pendentes)`}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-5 border-t border-neutral-800 pt-4 text-[11px] leading-relaxed text-neutral-400">
-                  Nota de transparência: este painel reflete o estado real do backend sem mocks.
-                  Quando o PostgreSQL não está configurado no ambiente atual, a API reporta{' '}
-                  <code>degraded / unconfigured</code> de forma explícita.
-                </div>
             </div>
           </div>
         </section>
