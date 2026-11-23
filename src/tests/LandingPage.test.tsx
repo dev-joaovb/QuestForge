@@ -64,7 +64,7 @@ describe('Landing Page Oficial & Roteamento Inicial (src/tests/LandingPage.test.
     // 1. Headline principal do Hero
     expect(
       screen.getByRole('heading', {
-        name: /Transforme provas anteriores em um plano de estudos orientado por desempenho/i,
+        name: /Transforme seus estudos em resultados reais/i,
       })
     ).toBeInTheDocument();
 
@@ -76,26 +76,25 @@ describe('Landing Page Oficial & Roteamento Inicial (src/tests/LandingPage.test.
     ).toBeInTheDocument();
     expect(
       screen.getByRole('heading', {
-        name: /Como o QuestForge transforma documentos brutos em estudo orientado por dados/i,
+        name: /Do material de estudo à sua próxima conquista/i,
       })
     ).toBeInTheDocument();
     expect(
       screen.getByRole('heading', {
-        name: /IA local para estruturar documentos e analisar métricas/i,
+        name: /Estude com mais inteligência, não apenas por mais tempo/i,
       })
     ).toBeInTheDocument();
     expect(
       screen.getByRole('heading', {
-        name: /Sequência de estudos \(Streak\) baseada em atividade real/i,
+        name: /Crie uma rotina de estudos que gera resultados/i,
       })
     ).toBeInTheDocument();
 
-    // 3. Verifica distinção explícita entre o que está ativo e o que está planejado
-    expect(screen.getByText('Ativo na Sprint 0')).toBeInTheDocument();
+    // 3. Verifica transparência sobre a validação operacional dos recursos
     expect(
-      screen.getByText('Ativo na Sprint 1 (Requer PostgreSQL ativo)')
-    ).toBeInTheDocument();
-    expect(screen.getByText('Planejado — Sprint 6')).toBeInTheDocument();
+      screen.getAllByText('Implementado — requer validação local')
+    ).toHaveLength(9);
+    expect(screen.queryByText(/Planejado — Sprint/i)).not.toBeInTheDocument();
 
     // 4. Verifica atualização com o status real vindo de /api/health
     await waitFor(() => {
