@@ -26,4 +26,4 @@ COPY server.ts index.html vite.config.ts ./
 
 EXPOSE 3333
 
-CMD ["npx", "tsx", "server.ts"]
+CMD ["npx", "tsx", "backend/src/server.ts"]
