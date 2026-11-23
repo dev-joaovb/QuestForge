@@ -1,3 +1,5 @@
+import '../landing.css';
+import { LandingDashboardPreview } from '../components/landing/LandingDashboardPreview';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -55,116 +57,92 @@ const PROBLEMS = [
 const PIPELINE_STEPS = [
   {
     step: '01',
-    title: 'Provas anteriores e gabaritos',
-    detail: 'Seleção dos cadernos de prova e gabaritos oficiais em formato PDF.',
-    sprint: 'Sprint 2 / Sprint 5',
+    title: 'Envie suas provas',
+    detail: 'Reúna provas anteriores e gabaritos em PDF para organizar seu material de estudo.',
+    sprint: 'Organização',
   },
   {
     step: '02',
-    title: 'Upload validado do documento',
-    detail: 'Verificação de MIME, extensão, tamanho e armazenamento seguro no MinIO.',
-    sprint: 'Sprint 3',
+    title: 'Organize suas questões',
+    detail: 'Transforme documentos em questões estruturadas, com apoio de extração de texto e IA.',
+    sprint: 'Preparação',
   },
   {
     step: '03',
-    title: 'Extração de texto via PDF Parser ou OCR',
-    detail: 'Detecção automática de camada textual nativa ou aplicação de OCR página a página.',
-    sprint: 'Sprint 3',
+    title: 'Pratique com simulados',
+    detail: 'Monte sessões de estudo e resolva questões com foco nas disciplinas que deseja melhorar.',
+    sprint: 'Prática',
   },
   {
     step: '04',
-    title: 'Normalização e estruturação assistida por IA local',
-    detail: 'Limpeza de artefatos de OCR e segmentação via OllamaProvider com prompts versionados.',
-    sprint: 'Sprint 4',
-  },
-  {
-    step: '05',
-    title: 'Validação estrita (Zod + regras de negócio)',
-    detail: 'Registro intermediário em AIExtraction antes de aprovar qualquer questão.',
-    sprint: 'Sprint 4',
-  },
-  {
-    step: '06',
-    title: 'Banco de questões persistido no PostgreSQL',
-    detail: 'Questões, alternativas e gabarito oficial associados e indexados via Prisma ORM.',
-    sprint: 'Sprint 4 / Sprint 5',
-  },
-  {
-    step: '07',
-    title: 'Simulados personalizados com cronômetro oficial',
-    detail: 'Seleção e randomização no backend com controle de tempo baseado em startedAt.',
-    sprint: 'Sprint 6',
-  },
-  {
-    step: '08',
-    title: 'Desempenho, histórico, streak e recomendações',
-    detail: 'Métricas agregadas no banco de dados e análises baseadas em estatísticas reais.',
-    sprint: 'Sprint 7 a Sprint 9',
+    title: 'Acompanhe sua evolução',
+    detail: 'Consulte seu histórico, identifique pontos de melhoria e mantenha a consistência nos estudos.',
+    sprint: 'Evolução',
   },
 ];
 
 const PLATFORM_FEATURES = [
   {
-    name: 'Fundação Full-Stack, Health Check e Docker',
+    name: 'Uma plataforma para organizar seus estudos',
     description:
-      'Arquitetura React + Vite + Express + Prisma + PostgreSQL com verificação real de dependências em GET /api/health e orquestração Docker Compose.',
-    status: 'Ativo na Sprint 0',
-    isAvailableNow: true,
-  },
-  {
-    name: 'Cadastro, Login e Sessão com Cookie HttpOnly',
-    description:
-      'Autenticação própria no backend com senhas em hash scrypt, proteção CSRF e sessões em UserSession (persistência real requer PostgreSQL ativo).',
-    status: 'Ativo na Sprint 1 (Requer PostgreSQL ativo)',
-    isAvailableNow: true,
-  },
-  {
-    name: 'Banco de Provas e Upload de PDFs (MinIO)',
-    description:
-      'Cadastro de provas por instituição, banca, ano e cargo, com upload validado de cadernos de prova e gabaritos.',
-    status: 'Planejado — Sprints 2 e 3',
+      'Centralize sua preparação em um ambiente pensado para reunir materiais, questões e informações sobre sua evolução.',
+    status: 'Implementado — requer validação local',
     isAvailableNow: false,
   },
   {
-    name: 'Pipeline PDF Parser + OCR para Provas Digitalizadas',
+    name: 'Sua conta, seu espaço de estudos',
     description:
-      'Extração textual direta ou OCR local para documentos escaneados, preservando a página de origem e normalizando quebras e hifenizações.',
-    status: 'Planejado — Sprint 3',
+      'Acesse sua área pessoal e mantenha suas atividades vinculadas à sua conta, com mecanismos de proteção de sessão.',
+    status: 'Implementado — requer validação local',
     isAvailableNow: false,
   },
   {
-    name: 'Estruturação de Questões por IA Local + Validação',
+    name: 'Organize provas e gabaritos',
     description:
-      'Extração via Ollama com schema estrito, proteção contra prompt injection em PDFs e validação em AIExtraction antes da tabela Question.',
-    status: 'Planejado — Sprint 4',
+      'Reúna provas anteriores e gabaritos em PDF, organizados por instituição, banca, ano e cargo.',
+    status: 'Implementado — requer validação local',
     isAvailableNow: false,
   },
   {
-    name: 'Associação de Gabarito Oficial',
+    name: 'Transforme PDFs em material de estudo',
     description:
-      'Processamento dedicado do gabarito oficial para definir a alternativa correta sem permitir que a IA invente respostas.',
-    status: 'Planejado — Sprint 5',
+      'Extraia textos de provas digitais ou digitalizadas e prepare suas questões para uma experiência de estudo mais prática.',
+    status: 'Implementado — requer validação local',
     isAvailableNow: false,
   },
   {
-    name: 'Simulados Personalizados com Cronômetro no Backend',
+    name: 'Inteligência artificial para organizar questões',
     description:
-      'Filtros por prova, banca, ano, disciplina, assunto, dificuldade, quantidade e tempo, com ordem persistida e cronômetro auditado pelo servidor.',
-    status: 'Planejado — Sprint 6',
+      'Utilize recursos de inteligência artificial para estruturar questões extraídas dos documentos, com etapas de validação.',
+    status: 'Implementado — requer validação local',
     isAvailableNow: false,
   },
   {
-    name: 'Sequência de Estudos (Streak) e Histórico Paginado',
+    name: 'Respostas baseadas no gabarito oficial',
     description:
-      'Contabilização determinística de dias ativos apenas mediante atividade real de estudo e histórico paginado no PostgreSQL.',
-    status: 'Planejado — Sprint 7',
+      'Associe as alternativas corretas ao gabarito oficial da prova, sem depender de respostas inventadas pela IA.',
+    status: 'Implementado — requer validação local',
     isAvailableNow: false,
   },
   {
-    name: 'Dashboard Analítico e IA Educacional',
+    name: 'Simulados do seu jeito',
     description:
-      'Agregações SQL de acertos, tempo e evolução por matéria, acompanhadas de recomendações geradas sobre estatísticas consolidadas.',
-    status: 'Planejado — Sprints 8 e 9',
+      'Personalize seus treinos por disciplina, banca, dificuldade e duração para praticar de acordo com seus objetivos.',
+    status: 'Implementado — requer validação local',
+    isAvailableNow: false,
+  },
+  {
+    name: 'Construa uma rotina consistente',
+    description:
+      'Acompanhe seus dias de estudo e consulte suas atividades anteriores para manter a constância na preparação.',
+    status: 'Implementado — requer validação local',
+    isAvailableNow: false,
+  },
+  {
+    name: 'Entenda sua evolução',
+    description:
+      'Visualize acertos, tempo de resolução e desempenho por disciplina, com análises para orientar seus próximos estudos.',
+    status: 'Implementado — requer validação local',
     isAvailableNow: false,
   },
 ];
@@ -200,7 +178,7 @@ export function LandingPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-[#FAFAFA] flex flex-col">
+    <div className="qf-landing min-h-screen flex flex-col">
       {/* 1. NAVBAR */}
       <Navbar />
 
@@ -210,52 +188,67 @@ export function LandingPage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 items-start gap-12 lg:grid-cols-12">
               <div className="lg:col-span-7 qf-animate-in">
-                <p className="text-xs font-mono text-neutral-400">
-                  QuestForge · Engenharia de Estudos · Fundação Sprint 0 Ativa
-                </p>
+                <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-500/10 px-4 py-2 text-xs font-semibold text-blue-200">
+                  <CheckCircle2 className="h-4 w-4 text-sky-400" />
+                  Sua jornada de estudos começa aqui
+                </div>
 
                 <h1
-                  className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-5xl lg:leading-[1.12]"
+                  className="mt-7 max-w-3xl text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl lg:leading-[1.12]"
                   style={{ textWrap: 'balance' }}
                 >
-                  Transforme provas anteriores em um plano de estudos orientado por desempenho.
+                  Transforme seus estudos em{' '}
+                  <span className="bg-gradient-to-r from-blue-400 via-sky-300 to-cyan-300 bg-clip-text text-transparent">
+                    resultados reais.
+                  </span>
                 </h1>
 
-                <p className="mt-6 max-w-2xl text-base leading-relaxed text-neutral-300 sm:text-lg">
-                  O QuestForge é uma plataforma full-stack para organizar provas em PDF, extrair e
-                  validar questões com auxílio de OCR e IA local, executar simulados cronometrados e
-                  acompanhar sua evolução real por disciplina, assunto e banca no PostgreSQL.
+                <p className="mt-6 max-w-2xl text-base leading-relaxed text-slate-300 sm:text-lg">
+                  Organize suas questões, pratique com simulados e acompanhe sua evolução
+                  em uma única plataforma. Estude com mais clareza, consistência e foco
+                  no que realmente importa.
                 </p>
 
-                <div className="mt-8 flex flex-wrap items-center gap-4">
-                  <Link
-                    to="/register"
-                    className="inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-[#2563EB] px-5 py-3 text-sm font-semibold text-white transition-colors duration-150 hover:bg-[#1D4ED8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
-                  >
-                    Criar conta
+                <div className="mt-9 flex flex-wrap items-center gap-4">
+                  <Link to="/register" className="qf-landing-button-primary">
+                    Começar gratuitamente
                     <ArrowRight className="h-4 w-4" />
                   </Link>
-                  <a
-                    href="#funcionamento"
-                    className="inline-flex items-center whitespace-nowrap rounded-md border border-neutral-800 bg-neutral-950 px-5 py-3 text-sm font-medium text-neutral-200 transition-colors duration-150 hover:border-neutral-700 hover:bg-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
-                  >
-                    Conhecer a arquitetura e o fluxo
+
+                  <a href="#funcionamento" className="qf-landing-button-secondary">
+                    Conhecer a plataforma
                   </a>
                 </div>
 
-                <div className="mt-8 border-t border-neutral-900 pt-6 text-xs text-neutral-400">
-                  <span>Persistência Oficial: PostgreSQL + Prisma ORM</span>
-                  <span aria-hidden="true"> · </span>
-                  <span>Processamento Documental: PDF / OCR / MinIO</span>
-                  <span aria-hidden="true"> · </span>
-                  <span>IA Local Auditada: Ollama + Zod</span>
+                <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-sm text-slate-300">
+                  <span className="inline-flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-sky-400" />
+                    Questões organizadas
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-sky-400" />
+                    Simulados para praticar
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-sky-400" />
+                    Evolução acompanhada
+                  </span>
                 </div>
               </div>
 
-              {/* Elemento Visual: Arquitetura Operacional + Status Real da Fundação (/api/health) */}
+              <div className="lg:col-span-5 qf-animate-in">
+                <LandingDashboardPreview />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section aria-label="Diagnóstico técnico da plataforma" className="border-b border-neutral-800 py-10">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
               <div
                 id="status-fundacao"
-                className="lg:col-span-5 rounded-lg border border-neutral-800 bg-neutral-950 p-6 qf-animate-in"
+                className="rounded-xl border border-neutral-800 bg-neutral-950 p-6"
               >
                 <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
                   <div>
@@ -353,7 +346,6 @@ export function LandingPage() {
                   Quando o PostgreSQL não está configurado no ambiente atual, a API reporta{' '}
                   <code>degraded / unconfigured</code> de forma explícita.
                 </div>
-              </div>
             </div>
           </div>
         </section>
@@ -394,14 +386,13 @@ export function LandingPage() {
         <section id="funcionamento" className="border-b border-neutral-800 bg-neutral-950/50 py-16 sm:py-20">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl">
-              <p className="text-xs font-mono text-neutral-400">02. Arquitetura de Processamento</p>
+              <p className="text-xs font-mono text-neutral-400">02. Sua jornada de aprendizado</p>
               <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                Como o QuestForge transforma documentos brutos em estudo orientado por dados
+                Do material de estudo à sua próxima conquista
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-neutral-400 sm:text-base">
-                O sistema não é apenas um leitor de perguntas. Ele foi arquitetado em torno de uma
-                pipeline verificável que separa ingestão de PDFs, extração de texto/OCR, estruturação
-                por IA local, validação de schema e persistência relacional.
+                Uma experiência pensada para simplificar sua preparação. Organize seus materiais,
+                pratique com propósito e acompanhe sua evolução em cada etapa da jornada.
               </p>
             </div>
 
@@ -409,15 +400,15 @@ export function LandingPage() {
               {PIPELINE_STEPS.map((item) => (
                 <div
                   key={item.step}
-                  className="flex flex-col justify-between rounded-lg border border-neutral-800 bg-[#0A0A0A] p-5"
+                  className="qf-landing-card flex flex-col justify-between p-6"
                 >
                   <div>
                     <div className="flex items-center justify-between text-xs font-mono text-neutral-400">
-                      <span className="text-[#2563EB] tabular-nums">Etapa {item.step}</span>
+                      <span className="font-semibold text-sky-400 tabular-nums">Etapa {item.step}</span>
                       <span>{item.sprint}</span>
                     </div>
-                    <h3 className="mt-3 text-sm font-semibold text-white">{item.title}</h3>
-                    <p className="mt-2 text-xs leading-relaxed text-neutral-400">{item.detail}</p>
+                    <h3 className="mt-5 text-lg font-semibold text-white">{item.title}</h3>
+                    <p className="mt-3 text-sm leading-relaxed text-slate-400">{item.detail}</p>
                   </div>
                 </div>
               ))}
@@ -430,15 +421,15 @@ export function LandingPage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl">
               <p className="text-xs font-mono text-neutral-400">
-                03. Recursos Principais e Cronograma de Engenharia
+                03. Tudo para estudar com mais eficiência
               </p>
               <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                Módulos do sistema: o que já está ativo na Sprint 0 e o que será entregue a seguir
+                Uma plataforma completa para sua preparação
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-neutral-400 sm:text-base">
-                O desenvolvimento do QuestForge segue Sprints incrementais auditáveis. Nenhuma
-                funcionalidade futura é simulada com mocks: abaixo você confere exatamente o que já
-                está operacional na fundação e o que está em implementação nas próximas Sprints.
+                Do gerenciamento de questões aos simulados e indicadores de desempenho,
+                conheça os recursos desenvolvidos para tornar sua rotina de estudos
+                mais organizada, prática e orientada à evolução contínua.
               </p>
             </div>
 
@@ -446,7 +437,7 @@ export function LandingPage() {
               {PLATFORM_FEATURES.map((feature) => (
                 <div
                   key={feature.name}
-                  className="flex flex-col justify-between rounded-lg border border-neutral-800 bg-neutral-950 p-6"
+                  className="qf-landing-card flex flex-col justify-between p-6 sm:p-7"
                 >
                   <div>
                     <div className="flex items-center gap-2 text-xs font-mono">
@@ -462,8 +453,8 @@ export function LandingPage() {
                         </>
                       )}
                     </div>
-                    <h3 className="mt-3 text-base font-semibold text-white">{feature.name}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-neutral-400">
+                    <h3 className="mt-5 text-lg font-semibold tracking-tight text-white">{feature.name}</h3>
+                    <p className="mt-3 text-sm leading-7 text-slate-400">
                       {feature.description}
                     </p>
                   </div>
@@ -479,26 +470,27 @@ export function LandingPage() {
             <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
               <div className="lg:col-span-6">
                 <p className="text-xs font-mono text-neutral-400">
-                  04. Engenharia de IA Aplicada com Responsabilidade
+                  04. Inteligência artificial a favor dos seus estudos
                 </p>
                 <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                  IA local para estruturar documentos e analisar métricas — sempre sob validação
+                  Estude com mais inteligência, não apenas por mais tempo
                 </h2>
                 <p className="mt-4 text-sm leading-relaxed text-neutral-300 sm:text-base">
-                  No QuestForge, a inteligência artificial não substitui o gabarito oficial nem opera
-                  como caixa-preta. A camada <code>AIProvider</code> (integrada ao{' '}
-                  <code>OllamaProvider</code>) atua em dois momentos distintos e auditáveis:
+                  A inteligência artificial do QuestForge foi desenvolvida para ajudar a organizar
+                  questões e interpretar indicadores de desempenho. Os resultados passam por
+                  etapas de validação, e as respostas corretas continuam vinculadas ao
+                  gabarito oficial da prova.
                 </p>
 
                 <ul className="mt-6 space-y-4 text-sm text-neutral-300">
                   <li className="border-l-2 border-[#2563EB] pl-4">
-                    <strong className="text-white">1. IA de Extração Documental (Sprint 4):</strong>{' '}
+                    <strong className="text-white">1. IA para organização de questões:</strong>{' '}
                     identifica enunciados, alternativas e páginas de origem a partir do texto
                     extraído do PDF/OCR, sem inventar questões, sem alterar o texto original e sem
                     resolver a prova por conta própria.
                   </li>
                   <li className="border-l-2 border-neutral-700 pl-4">
-                    <strong className="text-white">2. IA Educacional (Sprint 9):</strong> recebe
+                    <strong className="text-white">2. IA para análise de desempenho:</strong> recebe
                     exclusivamente estatísticas agregadas de desempenho (percentual de acertos e
                     volume por matéria) para apontar pontos fortes, pontos de atenção e prioridades
                     de estudo.
@@ -506,30 +498,30 @@ export function LandingPage() {
                 </ul>
               </div>
 
-              <div className="lg:col-span-6 rounded-lg border border-neutral-800 bg-[#0A0A0A] p-6">
-                <h3 className="text-sm font-semibold text-white">
-                  Regras de Segurança e Validação do Pipeline de IA (Planejado — Sprints 4 e 9)
+              <div className="qf-landing-card lg:col-span-6 p-6 sm:p-8">
+                <h3 className="text-lg font-semibold tracking-tight text-white">
+                  Segurança e validação dos resultados da IA
                 </h3>
-                <p className="mt-1 text-xs text-neutral-400">
-                  Nenhum resultado da IA é gravado diretamente na tabela oficial{' '}
-                  <code>Question</code> sem passar pelo validador estrutural:
+                <p className="mt-3 text-sm leading-relaxed text-slate-400">
+                  Antes de integrar questões ao seu material de estudo, o sistema aplica
+                  etapas de processamento e validação para reduzir inconsistências.
                 </p>
 
-                <div className="mt-5 space-y-3 font-mono text-xs">
-                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3 text-neutral-300">
-                    1. Documento PDF/OCR (tratado como conteúdo não confiável contra Prompt Injection)
+                <div className="mt-6 space-y-3 text-sm">
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-slate-300">
+                    01. Leitura do documento e extração do conteúdo
                   </div>
-                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3 text-neutral-300">
-                    2. Execução do Job com prompt versionado (ex.: question-extraction.v1)
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-slate-300">
+                    02. Organização das informações com apoio da IA
                   </div>
-                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3 text-neutral-300">
-                    3. Persistência intermediária em AIExtraction (rawResponse + parsedData)
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-slate-300">
+                    03. Registro intermediário para conferência dos resultados
                   </div>
-                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3 text-neutral-300">
-                    4. Validação Zod + Regras de Negócio (alternativas, letras, páginas, duplicidades)
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-slate-300">
+                    04. Verificação de alternativas, páginas e possíveis duplicidades
                   </div>
-                  <div className="rounded border border-[#2563EB]/50 bg-neutral-950 p-3 text-white">
-                    5. Aprovação para o banco oficial Question + Associação ao Gabarito Oficial
+                  <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 p-4 font-medium text-blue-100">
+                    05. Estruturação das questões e associação ao gabarito oficial
                   </div>
                 </div>
               </div>
@@ -542,62 +534,61 @@ export function LandingPage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
               <div className="lg:col-span-5">
-                <p className="text-xs font-mono text-neutral-400">
-                  05. Simulados sob Medida (Planejado — Sprint 6)
+                <p className="text-xs font-medium text-slate-400">
+                  05. Simulados personalizados
                 </p>
                 <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                  Treine com recorte preciso e cronômetro controlado pelo servidor
+                  Simulados personalizados para você evoluir
                 </h2>
                 <p className="mt-4 text-sm leading-relaxed text-neutral-400 sm:text-base">
-                  Em vez de refazer provas sempre na mesma sequência estática, o módulo de simulados
-                  permitirá configurar baterias personalizadas selecionadas e randomizadas no
-                  backend.
+                  Prepare-se com simulados adaptados aos seus objetivos. Escolha disciplinas,
+                  assuntos, bancas e níveis de dificuldade para concentrar seus esforços
+                  no que realmente importa para sua preparação.
                 </p>
                 <p className="mt-3 text-sm leading-relaxed text-neutral-400">
-                  A posição de cada questão (<code>SimulationQuestion.position</code>) e o horário de
-                  início (<code>startedAt</code>) são mantidos no PostgreSQL, garantindo que a
-                  contagem de tempo permaneça exata mesmo se você atualizar a página.
+                  Defina a quantidade de questões e o tempo disponível para cada sessão.
+                  O sistema foi desenvolvido para registrar o andamento do simulado
+                  e controlar o tempo pelo servidor, mesmo após atualizar a página.
                 </p>
               </div>
 
-              <div className="lg:col-span-7 rounded-lg border border-neutral-800 bg-neutral-950 p-6">
+              <div className="qf-landing-card lg:col-span-7 p-6 sm:p-8">
                 <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
-                  <span className="text-xs font-mono text-neutral-400">
-                    Especificação da Interface · Configurador de Simulado (Sprint 6)
+                  <span className="text-xs font-medium text-slate-400">
+                    Configure seu próximo simulado
                   </span>
-                  <span className="text-xs font-mono text-neutral-400">
-                    Fonte de verdade: Backend + PostgreSQL
+                  <span className="text-xs font-medium text-slate-400">
+                    Prévia ilustrativa
                   </span>
                 </div>
 
                 <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 text-xs">
-                  <div className="rounded border border-neutral-800 bg-[#0A0A0A] p-3.5">
-                    <span className="text-neutral-400">Critérios de Origem</span>
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-colors hover:border-blue-500/40">
+                    <span className="text-neutral-400">Escolha sua prova</span>
                     <p className="mt-1 font-medium text-white">Concurso / Exame · Banca · Ano</p>
                   </div>
-                  <div className="rounded border border-neutral-800 bg-[#0A0A0A] p-3.5">
-                    <span className="text-neutral-400">Recorte de Conteúdo</span>
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-colors hover:border-blue-500/40">
+                    <span className="text-neutral-400">Selecione os conteúdos</span>
                     <p className="mt-1 font-medium text-white">Disciplina · Assunto · Subtópico</p>
                   </div>
-                  <div className="rounded border border-neutral-800 bg-[#0A0A0A] p-3.5">
-                    <span className="text-neutral-400">Calibragem</span>
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-colors hover:border-blue-500/40">
+                    <span className="text-neutral-400">Personalize o desafio</span>
                     <p className="mt-1 font-medium text-white tabular-nums">
                       Dificuldade · Quantidade de questões
                     </p>
                   </div>
-                  <div className="rounded border border-neutral-800 bg-[#0A0A0A] p-3.5">
-                    <span className="text-neutral-400">Controle de Tempo</span>
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-colors hover:border-blue-500/40">
+                    <span className="text-neutral-400">Defina seu tempo</span>
                     <p className="mt-1 font-medium text-white tabular-nums">
-                      startedAt + timeLimitSeconds (Expiração automática)
+                      Duração personalizada com controle de tempo
                     </p>
                   </div>
                 </div>
 
                 <p className="mt-4 text-xs text-neutral-400">
-                  Verificação de integridade: o frontend envia apenas{' '}
-                  <code>selectedAlternativeId</code>. O cálculo de acerto (<code>isCorrect</code>) e
-                  a nota final são apurados exclusivamente pelo backend confrontando o gabarito
-                  oficial.
+                  Suas respostas são verificadas pelo sistema com base no gabarito oficial.
+                  A correção e o resultado final são calculados no servidor, ajudando
+                  a preservar a integridade de cada simulado.
                 </p>
               </div>
             </div>
@@ -609,63 +600,64 @@ export function LandingPage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl">
               <p className="text-xs font-mono text-neutral-400">
-                06. Dashboard Analítico (Planejado — Sprint 8)
+                06. Acompanhe seu desempenho
               </p>
               <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                Acompanhamento de desempenho calculado por agregações SQL no PostgreSQL
+                Acompanhe sua evolução e descubra onde melhorar
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-neutral-400 sm:text-base">
-                O dashboard foi projetado para responder perguntas concretas sobre o seu estudo sem
-                poluição visual. Abaixo está a representação estrutural das dimensões que serão
-                calculadas pela API sobre as tentativas reais de cada conta:
+                Entenda como você está evoluindo a cada sessão de estudo. Acompanhe seus acertos,
+                identifique as disciplinas que precisam de mais atenção e visualize seu
+                progresso ao longo do tempo. Tudo organizado para ajudar você a estudar
+                com mais estratégia.
               </p>
             </div>
 
-            <div className="mt-8 rounded-lg border border-neutral-800 bg-[#0A0A0A] p-6">
+            <div className="qf-landing-card mt-8 p-6 sm:p-8">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-4">
                 <span className="text-xs font-mono text-neutral-400">
-                  Exemplo Conceitual da Estrutura do Dashboard (Sem dados fictícios de produção)
+                  Prévia ilustrativa do seu painel de desempenho
                 </span>
                 <span className="text-xs font-mono text-[#2563EB]">
-                  Hierarquia: Resumo → Streak → Desempenho por Matéria → Evolução → Atividades
+                  Seus estudos, sua evolução
                 </span>
               </div>
 
               <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded border border-neutral-800 bg-neutral-950 p-4">
-                  <p className="text-xs text-neutral-400">Taxa de Aproveitamento</p>
-                  <p className="mt-2 font-mono text-sm text-white tabular-nums">
-                    Acertos ÷ Questões Respondidas
+                <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-5 transition-colors hover:border-blue-500/40">
+                  <p className="text-xs text-neutral-400">Seu aproveitamento</p>
+                  <p className="mt-3 text-base font-semibold tracking-tight text-white">
+                    Percentual de acertos
                   </p>
                   <p className="mt-1 text-xs text-neutral-500">
-                    Diferencia questões erradas de questões em branco
+                    Entenda quantas questões você acertou e onde pode melhorar
                   </p>
                 </div>
-                <div className="rounded border border-neutral-800 bg-neutral-950 p-4">
-                  <p className="text-xs text-neutral-400">Volume e Tempo de Estudo</p>
-                  <p className="mt-2 font-mono text-sm text-white tabular-nums">
-                    Soma de timeSpentSeconds
+                <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-5 transition-colors hover:border-blue-500/40">
+                  <p className="text-xs text-neutral-400">Tempo dedicado aos estudos</p>
+                  <p className="mt-3 text-base font-semibold tracking-tight text-white">
+                    Seu tempo de preparação
                   </p>
                   <p className="mt-1 text-xs text-neutral-500">
-                    Consolidado por questão e por simulado finalizado
+                    Acompanhe o tempo investido em questões e simulados
                   </p>
                 </div>
-                <div className="rounded border border-neutral-800 bg-neutral-950 p-4">
-                  <p className="text-xs text-neutral-400">Rendimento por Disciplina</p>
-                  <p className="mt-2 font-mono text-sm text-white tabular-nums">
-                    Agrupamento por subject e topic
+                <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-5 transition-colors hover:border-blue-500/40">
+                  <p className="text-xs text-neutral-400">Desempenho por disciplina</p>
+                  <p className="mt-3 text-base font-semibold tracking-tight text-white">
+                    Seus pontos fortes e desafios
                   </p>
                   <p className="mt-1 text-xs text-neutral-500">
-                    Identificação imediata de pontos fortes e críticos
+                    Descubra quais matérias precisam de mais atenção
                   </p>
                 </div>
-                <div className="rounded border border-neutral-800 bg-neutral-950 p-4">
-                  <p className="text-xs text-neutral-400">Evolução Temporal</p>
-                  <p className="mt-2 font-mono text-sm text-white tabular-nums">
-                    Série histórica por período
+                <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-5 transition-colors hover:border-blue-500/40">
+                  <p className="text-xs text-neutral-400">Sua evolução</p>
+                  <p className="mt-3 text-base font-semibold tracking-tight text-white">
+                    Progresso ao longo do tempo
                   </p>
                   <p className="mt-1 text-xs text-neutral-500">
-                    Progresso de acertos ao longo dos simulados
+                    Visualize sua evolução a cada simulado realizado
                   </p>
                 </div>
               </div>
@@ -678,43 +670,42 @@ export function LandingPage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
               {/* 9. Streak */}
-              <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-6 sm:p-8">
+              <div className="qf-landing-card p-6 sm:p-8">
                 <p className="text-xs font-mono text-neutral-400">
-                  07. Consistência Real (Planejado — Sprint 7)
+                  07. Mantenha a consistência
                 </p>
-                <h2 className="mt-2 text-xl font-bold tracking-tight text-white sm:text-2xl">
-                  Sequência de estudos (Streak) baseada em atividade real
+                <h2 className="mt-3 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                  Crie uma rotina de estudos que gera resultados
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-neutral-300">
-                  O QuestForge não contabiliza simples logins, aberturas de dashboard ou
-                  atualizações de página como dia estudado. A sequência só avança quando você
-                  executa pelo menos uma atividade válida de estudo (<code>QUESTION</code>,{' '}
-                  <code>SIMULATION</code> ou <code>EXAM</code>).
+                  Cada dia de dedicação faz diferença. O QuestForge acompanha sua
+                  sequência de estudos com base em atividades realizadas,
+                  incentivando a constância e a construção de bons hábitos.
                 </p>
                 <ul className="mt-5 space-y-2 text-xs text-neutral-400">
-                  <li>· Incrementa em dias consecutivos com atividade concluída;</li>
-                  <li>· Múltiplas atividades no mesmo dia contam como um único dia ativo;</li>
-                  <li>· Preserva o recorde histórico (<code>longestStreak</code>) no PostgreSQL;</li>
-                  <li>· Regra determinística avaliada no backend, imune a refresh no navegador.</li>
+                  <li>· Acompanhe seus dias consecutivos de estudo;</li>
+                  <li>· Mantenha sua sequência realizando atividades diariamente;</li>
+                  <li>· Visualize seu recorde de consistência nos estudos;</li>
+                  <li>· Sua sequência considera atividades reais, não apenas acessos à plataforma.</li>
                 </ul>
               </div>
 
               {/* 10. Histórico */}
-              <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-6 sm:p-8">
+              <div className="qf-landing-card p-6 sm:p-8">
                 <p className="text-xs font-mono text-neutral-400">
-                  08. Memória de Longo Prazo (Planejado — Sprint 7)
+                  08. Seu histórico de estudos
                 </p>
-                <h2 className="mt-2 text-xl font-bold tracking-tight text-white sm:text-2xl">
-                  Histórico persistente e paginado associado à sua conta
+                <h2 className="mt-3 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                  Toda a sua jornada de estudos em um só lugar
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-neutral-300">
-                  Todas as questões respondidas, simulados concluídos, percentuais de acerto e
-                  tempos de resolução ficam gravados no PostgreSQL e podem ser consultados com
-                  paginação eficiente (<code>GET /api/history?page=1&amp;limit=20</code>).
+                  Consulte suas atividades anteriores, acompanhe os resultados
+                  dos simulados e revisite questões respondidas. Seu histórico
+                  ajuda a entender sua evolução e planejar os próximos estudos.
                 </p>
                 <ul className="mt-5 space-y-2 text-xs text-neutral-400">
                   <li>· Revisão de simulados realizados e notas obtidas;</li>
-                  <li>· Registro individual de tentativas (<code>QuestionAttempt</code>);</li>
+                  <li>· Consulte suas respostas e identifique oportunidades de revisão;</li>
                   <li>· Acompanhamento da duração de cada sessão de estudo;</li>
                   <li>· Dados vinculados exclusivamente ao usuário autenticado.</li>
                 </ul>
@@ -734,19 +725,19 @@ export function LandingPage() {
                   Para quem o QuestForge foi projetado
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-neutral-400">
-                  A arquitetura é flexível para qualquer avaliação objetiva baseada em cadernos de
-                  prova e gabaritos:
+                  A plataforma foi pensada para diferentes jornadas de preparação, utilizando
+                  questões, provas anteriores e gabaritos:
                 </p>
                 <ul className="mt-5 space-y-3 text-sm text-neutral-300">
-                  <li className="rounded border border-neutral-800 bg-[#0A0A0A] p-3.5">
+                  <li className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-colors hover:border-blue-500/40">
                     <strong className="text-white">Candidatos de concursos públicos:</strong>{' '}
                     organização por banca examinadora, órgão, cargo e ano.
                   </li>
-                  <li className="rounded border border-neutral-800 bg-[#0A0A0A] p-3.5">
+                  <li className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-colors hover:border-blue-500/40">
                     <strong className="text-white">Estudantes de vestibulares e exames nacionais:</strong>{' '}
                     treinamento cronometrado e revisão de disciplinas com menor taxa de acerto.
                   </li>
-                  <li className="rounded border border-neutral-800 bg-[#0A0A0A] p-3.5">
+                  <li className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-colors hover:border-blue-500/40">
                     <strong className="text-white">Profissionais em busca de certificações técnicas:</strong>{' '}
                     transformação de simulados e provas anteriores em banco estruturado de revisão.
                   </li>
@@ -760,22 +751,23 @@ export function LandingPage() {
                   Princípios de privacidade e integridade dos dados
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-neutral-400">
-                  Construído sob diretrizes estritas de engenharia de software e segurança:
+                  Sua experiência de estudo foi projetada com atenção à proteção das informações:
                 </p>
                 <div className="mt-5 space-y-3 text-sm text-neutral-300">
-                  <div className="rounded border border-neutral-800 bg-[#0A0A0A] p-3.5">
-                    <strong className="text-white">Zero credenciais expostas e logs higienizados:</strong>{' '}
-                    validação de variáveis de ambiente no boot e redaction automático de dados
-                    sensíveis nos logs (Ativo na Sprint 0).
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-colors hover:border-blue-500/40">
+                    <strong className="text-white">Proteção das informações:</strong>{' '}
+                    cuidados para reduzir a exposição de informações sensíveis
+                    durante o funcionamento da plataforma.
                   </div>
-                  <div className="rounded border border-neutral-800 bg-[#0A0A0A] p-3.5">
-                    <strong className="text-white">Autenticação por sessão HttpOnly e hash de senha:</strong>{' '}
-                    nenhum dado sensível ou progresso é salvo em <code>localStorage</code> (Sprint 1).
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-colors hover:border-blue-500/40">
+                    <strong className="text-white">Acesso protegido à sua conta:</strong>{' '}
+                    mecanismos de autenticação e proteção das credenciais
+                    ajudam a manter sua experiência mais segura.
                   </div>
-                  <div className="rounded border border-neutral-800 bg-[#0A0A0A] p-3.5">
-                    <strong className="text-white">Isolamento de conteúdo em PDFs:</strong>{' '}
-                    documentos enviados passam por validação de MIME/tamanho e têm seu texto
-                    isolado das instruções do sistema ao interagir com o modelo local (Sprints 3 e 4).
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-colors hover:border-blue-500/40">
+                    <strong className="text-white">Tratamento cuidadoso dos documentos:</strong>{' '}
+                    os arquivos enviados passam por verificações antes de serem
+                    processados para apoiar sua preparação.
                   </div>
                 </div>
               </div>
@@ -790,11 +782,12 @@ export function LandingPage() {
               className="text-2xl font-bold tracking-tight text-white sm:text-4xl"
               style={{ textWrap: 'balance' }}
             >
-              Comece a transformar suas provas em evolução estruturada.
+              Seu próximo grande resultado começa com um passo.
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-neutral-400 sm:text-base">
-              Acesse as rotas de conta da plataforma ou acompanhe o diagnóstico da fundação técnica
-              enquanto avançamos incrementalmente pelas Sprints do QuestForge.
+              Organize seus estudos, pratique com simulados personalizados
+              e acompanhe sua evolução em uma experiência pensada para
+              ajudar você a alcançar seus objetivos.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
               <Link

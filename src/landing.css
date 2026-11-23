@@ -1,0 +1,133 @@
+/* QuestForge — identidade visual exclusiva da Landing Page */
+
+.qf-landing {
+  --qf-navy: #071126;
+  --qf-surface: #0d1b35;
+  --qf-blue: #3b82f6;
+  --qf-cyan: #38bdf8;
+  --qf-border: rgba(148, 163, 184, 0.16);
+
+  color: #f8fafc;
+  background: var(--qf-navy);
+}
+
+.qf-landing-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 80% 15%, rgba(37, 99, 235, 0.2), transparent 50%),
+    radial-gradient(ellipse at 15% 85%, rgba(14, 165, 233, 0.1), transparent 45%),
+    var(--qf-navy);
+}
+
+.qf-landing-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--qf-border);
+  border-radius: 1.25rem;
+  background: rgba(15, 23, 42, 0.72);
+  transition:
+    transform 250ms ease,
+    border-color 250ms ease,
+    box-shadow 250ms ease;
+}
+
+.qf-landing-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    320px circle at var(--qf-pointer-x, 50%) var(--qf-pointer-y, 50%),
+    rgba(59, 130, 246, 0.16),
+    transparent 75%
+  );
+  transition: opacity 250ms ease;
+}
+
+.qf-landing-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(96, 165, 250, 0.42);
+  box-shadow: 0 16px 40px rgba(2, 6, 23, 0.3);
+}
+
+.qf-landing-card:hover::before {
+  opacity: 1;
+}
+
+.qf-landing-button-primary,
+.qf-landing-button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  min-height: 3rem;
+  border-radius: 0.85rem;
+  padding: 0.75rem 1.4rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease,
+    background-color 200ms ease;
+}
+
+.qf-landing-button-primary {
+  color: #fff;
+  background: linear-gradient(120deg, #2563eb, #0284c7);
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.22);
+}
+
+.qf-landing-button-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(37, 99, 235, 0.38);
+}
+
+.qf-landing-button-secondary {
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.65);
+}
+
+.qf-landing-button-secondary:hover {
+  transform: translateY(-2px);
+  background: rgba(30, 41, 59, 0.9);
+}
+
+.qf-landing-button-primary:active,
+.qf-landing-button-secondary:active {
+  transform: translateY(0);
+}
+
+.qf-landing-button-primary:focus-visible,
+.qf-landing-button-secondary:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 4px;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .qf-landing-card:hover,
+  .qf-landing-button-primary:hover,
+  .qf-landing-button-secondary:hover {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qf-landing-card,
+  .qf-landing-card::before,
+  .qf-landing-button-primary,
+  .qf-landing-button-secondary {
+    transition: none;
+  }
+
+  .qf-landing-card:hover,
+  .qf-landing-button-primary:hover,
+  .qf-landing-button-secondary:hover {
+    transform: none;
+  }
+}
