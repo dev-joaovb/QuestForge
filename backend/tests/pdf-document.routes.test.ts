@@ -6,6 +6,7 @@ import type { PdfDocument, User, UserSession } from '@prisma/client';
 import { createApp } from '../src/app.ts';
 import { AuthService } from '../src/services/auth.service.ts';
 import { PdfDocumentService } from '../src/services/pdf-document.service.ts';
+import { UnconfiguredOcrService } from '../src/services/ocr.service.ts';
 import { PdfDocumentDomainError } from '../src/types/pdf-document.types.ts';
 import { CSRF_HEADER_EXPECTED_VALUE } from '../src/middlewares/csrf.middleware.ts';
 import { createMultipartPdfUploadMiddleware } from '../src/middlewares/multipart-pdf.middleware.ts';
@@ -481,6 +482,7 @@ describe('Rotas HTTP de Documentos PDF — /api/documents (backend/tests/pdf-doc
     pdfDocumentService = new PdfDocumentService({
       pdfDocumentRepository: pdfRepo,
       storageService: storage,
+      ocrService: new UnconfiguredOcrService(),
       maxFileSizeBytes: MAX_TEST_FILE_BYTES,
       maxPages: 5,
       extractionTimeoutMs: 10000,
