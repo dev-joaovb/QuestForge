@@ -26,7 +26,10 @@ import type {
   PutPrivateObjectInput,
   StoredPrivateObjectInfo,
 } from '../src/services/storage.service.ts';
-import type { IAiQuestionExtractionService } from '../src/services/ai-extraction.service.ts';
+import {
+  UnconfiguredAiQuestionExtractionService,
+  type IAiQuestionExtractionService,
+} from '../src/services/ai-extraction.service.ts';
 import { AiExtractionDomainError } from '../src/types/ai-extraction.types.ts';
 import type {
   AiQuestionExtractionRequest,
@@ -493,6 +496,10 @@ describe('Rotas HTTP de Documentos PDF — /api/documents (backend/tests/pdf-doc
       documents: {
         authService,
         pdfDocumentService,
+        aiExtractionService: new UnconfiguredAiQuestionExtractionService({
+          baseUrl: 'http://localhost:11434',
+          modelName: null,
+        }),
         multipartOptions: {
           maxFileSizeBytes: MAX_TEST_FILE_BYTES,
           maxFiles: 1,
