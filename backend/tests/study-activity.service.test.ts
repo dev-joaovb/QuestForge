@@ -92,6 +92,7 @@ describe('StudyActivityService & Simulation Finalization — Sprint 7.1', () => 
       simulationRepository: mockSimulationRepo,
       questionRepository: mockQuestionRepo,
       examRepository: mockExamRepo,
+      prisma: null,
     });
   });
 
@@ -566,6 +567,40 @@ describe('StudyActivityService & Simulation Finalization — Sprint 7.1', () => 
 
       // CRÍTICO: Não deve chamar findUnique no cliente transacional abortado
       expect(mockFindUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Isolamento da Inicialização Automática do Prisma', () => {
+    it('16. prisma null preserva os repositórios injetados mesmo com DATABASE_URL configurada', async () => {
+      vi.stubEnv('DATABASE_URL', 'postgresql://mock:mock@127.0.0.1:1/mock');
+
+      try {
+        const isolatedService = new StudyActivityService({
+          studyActivityRepository: activityRepo,
+          userStreakRepository: streakRepo,
+          streakService,
+          simulationRepository: mockSimulationRepo,
+          questionRepository: mockQuestionRepo,
+          examRepository: mockExamRepo,
+          prisma: null,
+        });
+
+        const createSpy = vi.spyOn(activityRepo, 'create');
+
+        const result = await isolatedService.recordActivity({
+          userId: 'user-1',
+          type: 'SIMULATION',
+          simulationId: 'sim-user-1',
+          completedAt: new Date('2026-10-28T12:00:00Z'),
+        });
+
+        expect(createSpy).toHaveBeenCalledTimes(1);
+        expect(result.wasCreated).toBe(true);
+        expect(activityRepo.activities).toHaveLength(1);
+        expect(result.streak.currentStreak).toBe(1);
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
   });
 

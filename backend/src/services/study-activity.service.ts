@@ -34,7 +34,8 @@ export interface StudyActivityServiceDependencies {
   simulationRepository?: ISimulationRepository;
   questionRepository?: IQuestionRepository;
   examRepository?: IExamRepository;
-  prisma?: PrismaClient;
+  // null desativa explicitamente a inicialização automática do Prisma.
+  prisma?: PrismaClient | null;
 }
 
 export class StudyActivityService {
@@ -60,7 +61,9 @@ export class StudyActivityService {
     this.examRepository =
       deps.examRepository ?? new PrismaExamRepository();
 
-    if (deps.prisma) {
+    if (deps.prisma === null) {
+      this.prisma = undefined;
+    } else if (deps.prisma) {
       this.prisma = deps.prisma;
     } else if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
       try {

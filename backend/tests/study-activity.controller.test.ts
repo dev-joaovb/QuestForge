@@ -43,6 +43,7 @@ describe('Rotas HTTP de Histórico de Atividades e Streak (/api/activities) — 
       studyActivityRepository: activityRepo,
       userStreakRepository: streakRepo,
       streakService,
+      prisma: null,
     });
 
     mockAuthService = {
