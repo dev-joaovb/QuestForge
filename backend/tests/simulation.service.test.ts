@@ -8,6 +8,8 @@ import type {
   SimulationStatus,
 } from '@prisma/client';
 import { SimulationService } from '../src/services/simulation.service.ts';
+import { MockStudyActivityRepository } from '../src/repositories/study-activity.repository.ts';
+import { MockUserStreakRepository } from '../src/repositories/user-streak.repository.ts';
 import type {
   ISimulationRepository,
 } from '../src/repositories/simulation.repository.ts';
@@ -260,6 +262,8 @@ describe('SimulationService (backend/src/services/simulation.service.ts)', () =>
       questionAttemptRepository: mockAttemptRepo as IQuestionAttemptRepository,
       questionRepository: mockQuestionRepo as IQuestionRepository,
       officialAnswerKeyRepository: mockOfficialKeyRepo as IOfficialAnswerKeyRepository,
+      studyActivityRepository: new MockStudyActivityRepository(),
+      userStreakRepository: new MockUserStreakRepository(),
     });
   });
 
@@ -1418,6 +1422,10 @@ describe('SimulationService (backend/src/services/simulation.service.ts)', () =>
       const brokenService = new SimulationService({
         simulationRepository: brokenRepo as ISimulationRepository,
         questionAttemptRepository: mockAttemptRepo,
+        questionRepository: mockQuestionRepo as IQuestionRepository,
+        officialAnswerKeyRepository: mockOfficialKeyRepo as IOfficialAnswerKeyRepository,
+        studyActivityRepository: new MockStudyActivityRepository(),
+        userStreakRepository: new MockUserStreakRepository(),
       });
 
       await expect(
