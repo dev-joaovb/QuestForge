@@ -401,6 +401,88 @@ export const rawExtractedQuestionSchema = z
     }
   });
 
+/**
+ * Gera o contrato JSON Schema de entrada utilizado na geração
+ * estruturada de questões pelo provedor de IA.
+ *
+ * O contrato é derivado do schema Zod existente para evitar
+ * duplicação e divergência entre as estruturas.
+ *
+ * A validação semântica, as transformações e a normalização
+ * continuam sendo executadas pelo validador Zod original.
+ */
+export function buildAiExtractionJsonSchema() {
+  const schema = z.toJSONSchema(aiQuestionExtractionPayloadSchema, {
+    io: 'input',
+  });
+
+  const properties = schema.properties;
+
+  if (!properties) {
+    throw new Error('JSON Schema de extracao sem propriedades.');
+  }
+
+  const questions = properties.questions;
+  const answerKey = properties.answerKey;
+
+  if (
+    !questions ||
+    typeof questions !== 'object' ||
+    !answerKey ||
+    typeof answerKey !== 'object'
+  ) {
+    throw new Error('JSON Schema de extracao sem colecoes validas.');
+  }
+
+  const questionItems = questions.items;
+  const answerKeyItems = answerKey.items;
+
+  if (
+    !questionItems ||
+    typeof questionItems !== 'object' ||
+    Array.isArray(questionItems) ||
+    !answerKeyItems ||
+    typeof answerKeyItems !== 'object' ||
+    Array.isArray(answerKeyItems)
+  ) {
+    throw new Error('JSON Schema de extracao sem itens validos.');
+  }
+
+  return {
+    ...schema,
+    required: ['examMetadata', 'questions', 'answerKey', 'warnings'],
+    properties: {
+      ...properties,
+      questions: {
+        ...questions,
+        items: {
+          ...questionItems,
+          required: [
+            'originalNumber',
+            'statement',
+            'type',
+            'subject',
+            'correctAnswer',
+            'alternatives',
+          ],
+        },
+      },
+      answerKey: {
+        ...answerKey,
+        items: {
+          ...answerKeyItems,
+          required: [
+            'questionNumber',
+            'correctAnswer',
+            'isAnnulled',
+            'sourcePage',
+          ],
+        },
+      },
+    },
+  };
+}
+
 export const aiQuestionExtractionPayloadSchema = z
   .object({
     examMetadata: rawExtractedExamMetadataSchema.nullable().optional().default(null),

@@ -681,3 +681,191 @@ describe('Sprint 4, Etapa 4.1 — Contratos e Validação da Extração Intelige
     });
   });
 });
+
+
+describe('BUG-OLLAMA-01 - Structured Outputs', () => {
+  it('gera o contrato estrutural de entrada a partir do Zod', async () => {
+    const { buildAiExtractionJsonSchema } = await import(
+      '../src/validators/ai-extraction.validator.ts'
+    );
+
+    const schema = buildAiExtractionJsonSchema();
+
+    expect(schema).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      required: ['examMetadata', 'questions', 'answerKey', 'warnings'],
+      properties: {
+        examMetadata: {
+          anyOf: [
+            {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                title: expect.any(Object),
+                institution: expect.any(Object),
+                board: expect.any(Object),
+                year: expect.any(Object),
+                position: expect.any(Object),
+                description: expect.any(Object),
+              },
+            },
+            { type: 'null' },
+          ],
+        },
+        questions: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+              'originalNumber',
+              'statement',
+              'type',
+              'subject',
+              'correctAnswer',
+              'alternatives',
+            ],
+            properties: {
+              originalNumber: {
+                anyOf: [
+                  expect.objectContaining({
+                    type: 'integer',
+                  }),
+                  { type: 'null' },
+                ],
+              },
+              statement: {
+                type: 'string',
+              },
+              alternatives: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: expect.arrayContaining(['letter', 'text']),
+                  properties: {
+                    letter: { type: 'string' },
+                    text: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+        answerKey: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+              'questionNumber',
+              'correctAnswer',
+              'isAnnulled',
+              'sourcePage',
+            ],
+            properties: {
+              questionNumber: { type: 'integer' },
+              correctAnswer: expect.any(Object),
+              isAnnulled: { type: 'boolean' },
+              sourcePage: expect.any(Object),
+            },
+          },
+        },
+        warnings: {
+          type: 'array',
+        },
+      },
+    });
+  });
+
+  it('rejeita a estrutura inadequada capturada do Ollama', async () => {
+    const { aiQuestionExtractionPayloadSchema } = await import(
+      '../src/validators/ai-extraction.validator.ts'
+    );
+
+    const capturedPayload = {
+      examMetadata: {
+        subject: 'Matemática',
+        board: null,
+        title: null,
+        year: null,
+      },
+      questions: [
+        {
+          originalNumber: 1,
+          question: 'Qual é o resultado da soma de 7 + 5?',
+          answerKey: 'C',
+          options: ['A) 10', 'B) 11', 'C) 12', 'D) 13'],
+          sourcePage: null,
+        },
+      ],
+      answerKey: ['C'],
+      warnings: [
+        'Não foram encontrados campos opcionalmente esperados no documento de entrada.',
+      ],
+    };
+
+    const result =
+      aiQuestionExtractionPayloadSchema.safeParse(capturedPayload);
+
+    expect(result.success).toBe(false);
+
+    if (!result.success) {
+      expect(
+        result.error.issues.map((issue) => issue.path.join('.'))
+      ).toEqual(
+        expect.arrayContaining([
+          'examMetadata',
+          'questions.0.statement',
+          'questions.0',
+          'answerKey.0',
+        ])
+      );
+    }
+  });
+
+  it('aceita a estrutura corrigida sem flexibilizar o validador', async () => {
+    const { aiQuestionExtractionPayloadSchema } = await import(
+      '../src/validators/ai-extraction.validator.ts'
+    );
+
+    const result = aiQuestionExtractionPayloadSchema.safeParse({
+      examMetadata: null,
+      questions: [
+        {
+          originalNumber: 1,
+          statement: 'Qual é o resultado da soma de 7 + 5?',
+          type: 'MULTIPLE_CHOICE',
+          subject: 'Matemática',
+          correctAnswer: 'C',
+          alternatives: [
+            { letter: 'A', text: '10' },
+            { letter: 'B', text: '11' },
+            { letter: 'C', text: '12' },
+            { letter: 'D', text: '13' },
+          ],
+        },
+      ],
+      answerKey: [
+        {
+          questionNumber: 1,
+          correctAnswer: 'C',
+          isAnnulled: false,
+          sourcePage: null,
+        },
+      ],
+      warnings: [],
+    });
+
+    expect(result.success).toBe(true);
+
+    if (result.success) {
+      expect(result.data.questions).toHaveLength(1);
+      expect(result.data.questions[0].originalNumber).toBe(1);
+      expect(result.data.questions[0].correctAnswer).toBe('C');
+      expect(result.data.questions[0].alternatives).toHaveLength(4);
+      expect(result.data.answerKey[0].correctAnswer).toBe('C');
+    }
+  });
+});

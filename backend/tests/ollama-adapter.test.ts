@@ -452,3 +452,198 @@ describe('Sprint 4, Etapa 4.2 — Adaptador Ollama (OllamaChatAdapter)', () => {
     expect(configured.getStatus().available).toBe(true);
   });
 });
+
+
+describe('BUG-OLLAMA-01 - Transporte estruturado', () => {
+  it('encaminha o JSON Schema no campo format da requisicao HTTP', async () => {
+    const { OllamaChatAdapter } = await import(
+      '../src/services/ollama-adapter.service.ts'
+    );
+
+    const { buildAiExtractionJsonSchema } = await import(
+      '../src/validators/ai-extraction.validator.ts'
+    );
+
+    const responseSchema = buildAiExtractionJsonSchema();
+
+    const requests: Array<{
+      url: string;
+      init?: RequestInit;
+    }> = [];
+
+    const fetchFn: typeof fetch = async (input, init) => {
+      requests.push({
+        url: String(input),
+        init,
+      });
+
+      return new Response(
+        JSON.stringify({
+          model: 'qwen2.5:3b',
+          message: {
+            role: 'assistant',
+            content: '{"questions":[],"answerKey":[]}',
+          },
+          done: true,
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    };
+
+    const adapter = new OllamaChatAdapter({
+      baseUrl: 'http://localhost:11434',
+      defaultModel: 'qwen2.5:3b',
+      fetchFn,
+    });
+
+    const controller = new AbortController();
+
+    await adapter.completeChat({
+      modelName: 'qwen2.5:3b',
+      baseUrl: 'http://localhost:11434',
+      systemPrompt: 'Extraia fielmente as questoes.',
+      userPrompt: 'Documento sintetico para teste.',
+      responseSchema,
+      timeoutMs: 45000,
+      signal: controller.signal,
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe(
+      'http://localhost:11434/api/chat'
+    );
+
+    expect(requests[0].init?.method).toBe('POST');
+    expect(requests[0].init?.signal).toBe(controller.signal);
+
+    const body = JSON.parse(
+      String(requests[0].init?.body)
+    );
+
+    expect(body.format).toEqual(responseSchema);
+    expect(body.stream).toBe(false);
+    expect(body.model).toBe('qwen2.5:3b');
+    expect(body.format.additionalProperties).toBe(false);
+  });
+
+  it('integra o contrato estruturado ao servico de extracao', async () => {
+    const { OllamaChatAdapter } = await import(
+      '../src/services/ollama-adapter.service.ts'
+    );
+
+    const { createAiQuestionExtractionService } = await import(
+      '../src/services/ai-extraction.service.ts'
+    );
+
+    const { buildAiExtractionJsonSchema } = await import(
+      '../src/validators/ai-extraction.validator.ts'
+    );
+
+    const requests: Array<Record<string, unknown>> = [];
+
+    const payload = {
+      examMetadata: null,
+      questions: [
+        {
+          originalNumber: 1,
+          statement: 'Qual e o resultado da soma de 7 + 5?',
+          type: 'MULTIPLE_CHOICE',
+          subject: 'Matematica',
+          correctAnswer: 'C',
+          alternatives: [
+            { letter: 'A', text: '10' },
+            { letter: 'B', text: '11' },
+            { letter: 'C', text: '12' },
+            { letter: 'D', text: '13' },
+          ],
+        },
+      ],
+      answerKey: [
+        {
+          questionNumber: 1,
+          correctAnswer: 'C',
+          isAnnulled: false,
+          sourcePage: null,
+        },
+      ],
+      warnings: [],
+    };
+
+    const fetchFn: typeof fetch = async (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+
+      return new Response(
+        JSON.stringify({
+          model: 'qwen2.5:3b',
+          message: {
+            role: 'assistant',
+            content: JSON.stringify(payload),
+          },
+          done: true,
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    };
+
+    const adapter = new OllamaChatAdapter({
+      baseUrl: 'http://localhost:11434',
+      defaultModel: 'qwen2.5:3b',
+      fetchFn,
+    });
+
+    const service = createAiQuestionExtractionService({
+      modelName: 'qwen2.5:3b',
+      baseUrl: 'http://localhost:11434',
+      completionFn: (context) => adapter.completeChat(context),
+    });
+
+    const result = await service.extractQuestionsFromText({
+      extractedText: [
+        'Questao 1',
+        'Qual e o resultado da soma de 7 + 5?',
+        'A) 10',
+        'B) 11',
+        'C) 12',
+        'D) 13',
+        'Gabarito oficial: Questao 1 - C',
+      ].join('\n'),
+      sourceKind: 'RAW_EXAM_TEXT',
+      defaultSubject: 'Matematica',
+      maxQuestions: 1,
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].format).toEqual(
+      buildAiExtractionJsonSchema()
+    );
+
+    expect(requests[0].messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'system',
+          content: expect.stringContaining(
+            'CONTRATO ESTRUTURAL OBRIGATÓRIO'
+          ),
+        }),
+      ])
+    );
+
+    expect(result.questions).toHaveLength(1);
+    expect(result.questions[0].originalNumber).toBe(1);
+    expect(result.questions[0].correctAnswer).toBe('C');
+    expect(result.questions[0].alternatives).toHaveLength(4);
+    expect(result.questions[0].requiresHumanReview).toBe(true);
+    expect(result.questions[0].status).toBe('NEEDS_REVIEW');
+    expect(result.answerKey[0].correctAnswer).toBe('C');
+  });
+});

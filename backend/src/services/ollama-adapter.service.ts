@@ -186,7 +186,7 @@ export class OllamaChatAdapter {
         },
       ],
       stream: false,
-      format: 'json',
+      format: context.responseSchema ?? 'json',
       options: {
         temperature: 0.1,
       },
