@@ -6,6 +6,7 @@ import {
 } from '../types/ai-extraction.types.ts';
 import {
   DEFAULT_MAX_EXTRACTED_QUESTIONS,
+  buildAiExtractionJsonSchema,
   parseRawAiJsonOutput,
   validateAiQuestionExtractionRequest,
   validateAndNormalizeAiExtractionPayload,
@@ -37,6 +38,7 @@ export interface AiModelCompletionContext {
   baseUrl: string;
   systemPrompt: string;
   userPrompt: string;
+  responseSchema?: ReturnType<typeof buildAiExtractionJsonSchema>;
   timeoutMs: number;
   signal: AbortSignal;
 }
@@ -85,6 +87,24 @@ export function buildQuestionExtractionPrompts(params: {
   const systemPrompt = [
     'Você é um extrator estruturado de questões de concursos públicos do sistema QuestForge.',
     'Sua única tarefa é extrair fielmente questões, alternativas e gabaritos presentes no texto fornecido.',
+    'CONTRATO ESTRUTURAL OBRIGATÓRIO:',
+    'Retorne os campos examMetadata, questions, answerKey e warnings.',
+    'examMetadata deve ser null ou um objeto contendo apenas title, institution, board, year, position e description.',
+    'A disciplina subject pertence à questão, nunca ao objeto examMetadata.',
+    'Cada questão deve utilizar statement para o enunciado, nunca question.',
+    'originalNumber e sourcePage devem ser números inteiros positivos ou null.',
+    'O campo type deve ser MULTIPLE_CHOICE ou TRUE_FALSE.',
+    'Utilize alternatives como uma lista de objetos com letter e text separados. Nunca utilize options ou listas de strings.',
+    'Questões MULTIPLE_CHOICE devem conter entre 2 e 10 alternativas distintas, preservando o conteúdo original.',
+    'Utilize correctAnswer para a letra da resposta explicitamente informada no documento. Não resolva a questão para inventar um gabarito.',
+    'O campo answerKey da raiz deve ser uma lista de objetos com questionNumber, correctAnswer, isAnnulled e sourcePage.',
+    'questionNumber deve ser um número inteiro positivo. isAnnulled deve ser booleano.',
+    'Para itens anulados, utilize isAnnulled=true e correctAnswer=null.',
+    'Quando não houver gabarito oficial, utilize answerKey como lista vazia.',
+    'difficulty deve ser EASY, MEDIUM, HARD ou null.',
+    'status deve ser NEEDS_REVIEW ou DRAFT, nunca ACTIVE ou ARCHIVED.',
+    'Utilize listas vazias para campos de lista sem conteúdo, nunca null.',
+    'Não adicione propriedades que não pertençam ao contrato.',
     'REGRAS ABSOLUTAS DE INTEGRIDADE E SEGURANÇA:',
     '1. Responda EXCLUSIVAMENTE com um objeto JSON válido seguindo o schema esperado ({ "examMetadata": ..., "questions": [...], "answerKey": [...], "warnings": [...] }).',
     '2. NUNCA invente questões, alternativas, gabaritos (correctAnswer), explicações (explanation), banca (board), ano (year), disciplina (subject) ou dificuldade (difficulty).',
@@ -337,6 +357,7 @@ export class ConfigurableAiQuestionExtractionService
           baseUrl: this.baseUrl,
           systemPrompt,
           userPrompt,
+          responseSchema: buildAiExtractionJsonSchema(),
           timeoutMs,
           signal: abortController.signal,
         }),
