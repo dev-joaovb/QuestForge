@@ -2,6 +2,10 @@ import { AiExtractionDomainError } from '../types/ai-extraction.types.ts';
 import type { AiModelCompletionContext } from './ai-extraction.service.ts';
 import { logger } from '../utils/logger.ts';
 
+import {
+  assertOllamaContextBudget,
+} from './ollama-context-budget.service.ts';
+
 export interface OllamaChatAdapterOptions {
   fetchFn?: typeof fetch;
   baseUrl?: string;
@@ -27,6 +31,9 @@ export interface OllamaChatResponseEnvelope {
     content?: string;
   };
   done?: boolean;
+  done_reason?: string;
+  prompt_eval_count?: number;
+  eval_count?: number;
   total_duration?: number;
   error?: string;
 }
@@ -173,6 +180,14 @@ export class OllamaChatAdapter {
     const sanitizedHost = this.getSanitizedOrigin(targetBaseUrl);
     const endpoint = `${targetBaseUrl}/api/chat`;
 
+    const budget = context.contextBudget
+      ? assertOllamaContextBudget({
+          modelName: context.modelName,
+          systemPrompt: context.systemPrompt,
+          userPrompt: context.userPrompt,
+        })
+      : undefined;
+
     const requestBody = {
       model: context.modelName,
       messages: [
@@ -189,6 +204,12 @@ export class OllamaChatAdapter {
       format: context.responseSchema ?? 'json',
       options: {
         temperature: 0.1,
+        ...(budget
+          ? {
+              num_ctx: budget.contextWindowTokens,
+              num_predict: budget.maxOutputTokens,
+            }
+          : {}),
       },
     };
 
@@ -316,6 +337,43 @@ export class OllamaChatAdapter {
         'O provedor Ollama indicou falha no processamento da solicitação.',
         502
       );
+    }
+
+    if (budget) {
+      if (
+        envelope.done !== true ||
+        envelope.done_reason !== 'stop'
+      ) {
+        throw new AiExtractionDomainError(
+          'AI_EXTRACTION_INVALID_OUTPUT',
+          'O Ollama não concluiu integralmente a geração estruturada.',
+          422
+        );
+      }
+
+      if (
+        !Number.isSafeInteger(envelope.prompt_eval_count) ||
+        envelope.prompt_eval_count !== budget.inputTokens
+      ) {
+        throw new AiExtractionDomainError(
+          'AI_EXTRACTION_INVALID_OUTPUT',
+          'A contagem de tokens processados pelo Ollama divergiu do orçamento previsto.',
+          422
+        );
+      }
+
+      if (
+        typeof envelope.eval_count !== 'number' ||
+        !Number.isSafeInteger(envelope.eval_count) ||
+        envelope.eval_count <= 0 ||
+        envelope.eval_count > budget.maxOutputTokens
+      ) {
+        throw new AiExtractionDomainError(
+          'AI_EXTRACTION_INVALID_OUTPUT',
+          'A geração do Ollama apresentou uma contagem de tokens inválida.',
+          422
+        );
+      }
     }
 
     // Nível 3: Validação do conteúdo textual da mensagem gerada pelo modelo
