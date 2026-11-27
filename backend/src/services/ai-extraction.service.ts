@@ -14,6 +14,18 @@ import {
 import { raceWithSignal } from '../utils/pdf-extractor.ts';
 import { logger } from '../utils/logger.ts';
 
+import {
+  segmentOllamaDocument,
+} from './ollama-document-segmenter.service.ts';
+
+import {
+  executeOllamaSequentialExtraction,
+} from './ollama-sequential-extraction.service.ts';
+
+import {
+  assertOllamaContextBudget,
+} from './ollama-context-budget.service.ts';
+
 import { createOllamaCompletionFn, OllamaChatAdapter } from './ollama-adapter.service.ts';
 
 export const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434';
@@ -39,6 +51,11 @@ export interface AiModelCompletionContext {
   systemPrompt: string;
   userPrompt: string;
   responseSchema?: ReturnType<typeof buildAiExtractionJsonSchema>;
+  contextBudget?: {
+    readonly contextWindowTokens: number;
+    readonly maxOutputTokens: number;
+    readonly inputTokens: number;
+  };
   timeoutMs: number;
   signal: AbortSignal;
 }
@@ -208,6 +225,7 @@ export class ConfigurableAiQuestionExtractionService
   private readonly defaultTimeoutMs: number;
   private readonly defaultMaxQuestions: number;
   private readonly completionFn?: AiStructuredCompletionFn;
+  private readonly usesNativeOllama: boolean;
   private readonly now: () => Date;
 
   constructor(options: ConfigurableAiQuestionExtractionServiceOptions = {}) {
@@ -230,6 +248,9 @@ export class ConfigurableAiQuestionExtractionService
       options.maxQuestionsPerDocument ??
       (Number(process.env.AI_MAX_QUESTIONS_PER_DOCUMENT) ||
         DEFAULT_MAX_EXTRACTED_QUESTIONS);
+
+    this.usesNativeOllama =
+      options.completionFn === undefined;
 
     this.completionFn =
       options.completionFn ??
@@ -341,33 +362,22 @@ export class ConfigurableAiQuestionExtractionService
       abortController.abort();
     }, timeoutMs);
 
-    const { systemPrompt, userPrompt } = buildQuestionExtractionPrompts({
-      extractedText: validatedRequest.extractedText,
-      maxQuestions,
-      defaultSubject: validatedRequest.defaultSubject,
-      defaultBoard: validatedRequest.defaultBoard,
-      defaultExamTitle: validatedRequest.defaultExamTitle,
-      defaultYear: validatedRequest.defaultYear,
-    });
-
     try {
-      const rawOutput = await raceWithSignal(
-        this.completionFn({
-          modelName: this.modelName,
-          baseUrl: this.baseUrl,
-          systemPrompt,
-          userPrompt,
-          responseSchema: buildAiExtractionJsonSchema(),
-          timeoutMs,
-          signal: abortController.signal,
-        }),
-        abortController.signal
-      );
+      const modelName = this.modelName;
+      const completionFn = this.completionFn;
+      const deadlineAt = Date.now() + timeoutMs;
 
-      const parsedJson =
-        typeof rawOutput === 'string' ? parseRawAiJsonOutput(rawOutput) : rawOutput;
+      const buildPrompts = (extractedText: string) =>
+        buildQuestionExtractionPrompts({
+          extractedText,
+          maxQuestions,
+          defaultSubject: validatedRequest.defaultSubject,
+          defaultBoard: validatedRequest.defaultBoard,
+          defaultExamTitle: validatedRequest.defaultExamTitle,
+          defaultYear: validatedRequest.defaultYear,
+        });
 
-      const validatedPayload = validateAndNormalizeAiExtractionPayload(parsedJson, {
+      const validationOptions = {
         sourceDocumentId: validatedRequest.sourceDocumentId,
         defaultSubject: validatedRequest.defaultSubject,
         defaultBoard: validatedRequest.defaultBoard,
@@ -375,7 +385,142 @@ export class ConfigurableAiQuestionExtractionService
         defaultYear: validatedRequest.defaultYear,
         maxQuestions,
         pageCount: validatedRequest.pageCount,
-      });
+      };
+
+      const validate = (payload: unknown) =>
+        validateAndNormalizeAiExtractionPayload(
+          payload,
+          validationOptions
+        );
+
+      const responseSchema = buildAiExtractionJsonSchema();
+
+      const complete = async (
+        extractedText: string,
+        callTimeoutMs: number,
+        signal: AbortSignal
+      ): Promise<unknown> => {
+        const prompts = buildPrompts(extractedText);
+
+        const contextBudget = this.usesNativeOllama
+          ? assertOllamaContextBudget({
+              modelName,
+              ...prompts,
+            })
+          : undefined;
+
+        const callController = new AbortController();
+
+        const onAbort = () => callController.abort();
+
+        if (signal.aborted) {
+          onAbort();
+        } else {
+          signal.addEventListener(
+            'abort',
+            onAbort,
+            { once: true }
+          );
+        }
+
+        const callTimer = setTimeout(
+          () => callController.abort(),
+          callTimeoutMs
+        );
+
+        try {
+          if (callController.signal.aborted) {
+            throw new AiExtractionDomainError(
+              'AI_EXTRACTION_TIMEOUT',
+              'A extração foi interrompida.',
+              504
+            );
+          }
+
+          const rawOutput = await raceWithSignal(
+            completionFn({
+              modelName,
+              baseUrl: this.baseUrl,
+              ...prompts,
+              responseSchema,
+              contextBudget,
+              timeoutMs: callTimeoutMs,
+              signal: callController.signal,
+            }),
+            callController.signal
+          );
+
+          if (callController.signal.aborted) {
+            throw new AiExtractionDomainError(
+              'AI_EXTRACTION_TIMEOUT',
+              'A extração foi interrompida.',
+              504
+            );
+          }
+
+          return typeof rawOutput === 'string'
+            ? parseRawAiJsonOutput(rawOutput)
+            : rawOutput;
+        } catch (error) {
+          if (callController.signal.aborted) {
+            throw new AiExtractionDomainError(
+              'AI_EXTRACTION_TIMEOUT',
+              'O processamento do bloco excedeu o prazo ou foi interrompido.',
+              504
+            );
+          }
+
+          throw error;
+        } finally {
+          clearTimeout(callTimer);
+          signal.removeEventListener('abort', onAbort);
+          callController.abort();
+        }
+      };
+
+      let parsedJson: unknown;
+
+      if (this.usesNativeOllama) {
+        const segmentation = segmentOllamaDocument({
+          extractedText: validatedRequest.extractedText,
+          modelName,
+          buildPrompts,
+        });
+
+        parsedJson = await executeOllamaSequentialExtraction({
+          blocks: segmentation.blocks,
+          maxQuestions,
+          signal: abortController.signal,
+          deadlineAt,
+          validate,
+          complete: (block, blockTimeoutMs, signal) =>
+            complete(
+              block.contextualText,
+              blockTimeoutMs,
+              signal
+            ),
+        });
+      } else {
+        // Preserva o contrato de provedores injetados.
+        parsedJson = await complete(
+          validatedRequest.extractedText,
+          timeoutMs,
+          abortController.signal
+        );
+      }
+
+      const validatedPayload = validate(parsedJson);
+
+      if (
+        abortController.signal.aborted ||
+        Date.now() >= deadlineAt
+      ) {
+        throw new AiExtractionDomainError(
+          'AI_EXTRACTION_TIMEOUT',
+          'A extração excedeu o prazo global.',
+          504
+        );
+      }
 
       const questionsNeedingSubject = validatedPayload.questions.filter(
         (q) => q.subject === null
